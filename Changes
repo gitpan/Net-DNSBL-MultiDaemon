@@ -1,5 +1,10 @@
 Revision history for Perl extension Net::DNSBL::MultiDaemon
 
+0.12  Wed Jun 23 16:46:38 PDT 2004
+	updated the documentation in multi_dnsbl.conf.sample
+	to clarify problems with the timeouts in sendmail when using
+ 	Net::DNSBL::MultiDaemon
+
 0.11  Fri Jun 18 13:07:14 PDT 2004
 	Change default SOA record to use TTL of 3600 
 	seconds for negative caching and set refresh, retry, to reasonable
