@@ -1,5 +1,8 @@
 Revision history for Perl extension Net::DNSBL::MultiDaemon
 
+0.06  Mon Dec  8 13:29:57 PST 2003
+	Oops! left perl diagnostics turned on in 0.05
+
 0.05  Mon Dec  8 13:13:12 PST 2003
 	in-addr.arpa queries did not accept SERVFAIL responses as 
 	as valid, just expected NXDOMAIN when reverse queries failed.
