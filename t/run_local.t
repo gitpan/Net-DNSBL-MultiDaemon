@@ -118,8 +118,8 @@ print "missing configuration file variables domain1.com, domain2.net\nnot "
 ## test 4	init STATS
 my %STATS;
 cntinit($DNSBL,\%STATS);
-print "got: $_, exp: 2, bad key count\nnot "
-        unless ($_ = keys %STATS) == 2;
+print "got: $_, exp: 5, bad key count\nnot "
+        unless ($_ = keys %STATS) == 5;
 &ok;
 
 my $statime = statinit($sfile,\%STATS);	# set stat init time

@@ -20,7 +20,7 @@ $D_NOTME     = 0x10; # return received response not for me
 $D_ANSTOP    = 0x20; # clear run OK flag if ANSWER present
 $D_VERBOSE   = 0x40; # verbose debug statements to STDERR
 
-$VERSION = do { my @r = (q$Revision: 0.12 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
+$VERSION = do { my @r = (q$Revision: 0.13 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
 
 @EXPORT_OK = qw(
         run
@@ -534,6 +534,7 @@ sub run {
 
   my %deadDNSBL;
   foreach(keys %$STATs) {
+    next unless $_ =~ /\./;					# only real domains
     $deadDNSBL{"$_"} = 1;					# initialize dead DNSBL timers
   }
 
@@ -596,10 +597,12 @@ sub run {
 		$BLzone eq lc $zone) {
 	      if (@NAignore && matchNetAddr($targetIP,\@NAignore)) {	# check for IP's to always pass
 		not_found($put,$name,$type,$id,\$msg,$SOAptr);		# return unconditional NOT FOUND
+		$STATs->{WhiteList} += 1;				# bump WhiteList count
 		$comment = 'IGNORE';
 	      }
 	      elsif (@NAblock && matchNetAddr($targetIP,\@NAblock)) {	# check for IP's to always block
 		($msg) = _ansrbak($put,$id,1,$rip,$zone,$type,3600,A1275);	# answer 127.0.0.5
+		$STATs->{BlackList} += 1;				# bump BlackList count
 		$comment = 'BLOCK';
 	      }
 	      elsif ($BBC &&						# check for IP's to block by country
@@ -611,7 +614,11 @@ sub run {
 		$comment = "block $cc";
 	      }
 	      else {
-		@blist = sort {$STATs->{"$b"} <=> $STATs->{"$a"}} keys %$STATs;
+		@blist = ();
+		foreach(sort {$STATs->{"$b"} <=> $STATs->{"$a"}} keys %$STATs) {
+		  next unless $_ =~ /\./;				# drop passed,white,black,bbc entries
+		  push @blist, $_;
+		}
 		bl_lookup($put,\$msg,\%remoteThreads,$l_Sin,_alarm($blist[0]),$id,$rip,$type,$zone,@blist);
 		send($R,$msg,0,$R_Sin);				# udp may not block
 		print STDERR $blist[0] if $DEBUG & $D_VERBOSE;
@@ -640,7 +647,7 @@ sub run {
       }
 ##################### IF RESPONSE  ###############################
       while (vec($rout,$filenoR,1)) {				# A response
-undef $msg;
+	undef $msg;
 	last unless recv($R,$msg,,PACKETSZ,0);			# ignore receive errors
 	if (length($msg) < HFIXEDSZ) {				# ignore if less then header size
 	  return 'short header' if $DEBUG & $D_SHRTHD;
@@ -737,6 +744,8 @@ undef $msg;
 	      }) {	# if no more hosts
 	  delete $remoteThreads{$id};
 	  not_found($put,$rip .'.'. $zone,$type,$id,\$msg,$SOAptr);	# send not found response
+	  $STATs->{Passed} += 1;
+	  $newstat = 1;							# notify refresh that update may be needed
 	} else {
 	  $deadDNSBL{"$blist[0]"} = 1;					# reset retry count
 	  bl_lookup($put,\$msg,\%remoteThreads,$l_Sin,_alarm($blist[0]),$id,$rip,$type,$zone,@blist);
@@ -745,6 +754,7 @@ undef $msg;
 	  last;
 	}
 	send($L,$msg,0,$l_Sin);
+
 	if ($DEBUG & $D_VERBOSE) {
 	  if ($answer) {
 	    print STDERR ' ',inet_ntoa($answer),"\n";
@@ -794,6 +804,8 @@ undef $msg;
 	      }) {	# if no more hosts
 	  delete $remoteThreads{$id};
 	  not_found($put,$rip .'.'. $BLzone,$type,$id,\$msg,$SOAptr);# send not found response
+	  $STATs->{Passed} += 1;				# count messages that pass thru this filter
+	  $newstat = 1;						# notify refresh that update may be needed
 	  send($L,$msg,0,$l_Sin);
 	  print STDERR " no bl\n" if $DEBUG & $D_VERBOSE;
 	} else {

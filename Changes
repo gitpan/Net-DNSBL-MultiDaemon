@@ -1,5 +1,21 @@
 Revision history for Perl extension Net::DNSBL::MultiDaemon
 
+0.13  Mon Aug  9 18:11:04 PDT 2004
+	Update rc.multi_dnsbl v1.05 to correct typo that caused
+	"Not a SCALAR reference at /etc/init.d/rc.multi_dnsbl line 118 (#1)"
+	error when using CountryCode blacklisting. 
+	"list2hash" not imported in /etc/init.d/rc.multi_dnsbl
+	Thanks to "Peter" <spamcannibal@legallybond.com> for spotting
+	those two errors.
+
+	Update Utilities::cntinit v0.03 to initialize counts for
+	Passed, WhiteList and BlackList (IGNORE,BLOCK) entries, 
+	update STAT sort to push above to bottom of list.
+
+	Update to count Passed, WhiteList and BlackList (IGNORE,BLOCK)
+	entries in stats file and print subtotal of rejects followed 
+	by WhiteList and Passed entries
+
 0.12  Wed Jun 23 16:46:38 PDT 2004
 	updated the documentation in multi_dnsbl.conf.sample
 	to clarify problems with the timeouts in sendmail when using

@@ -128,8 +128,8 @@ $DNSBL->{'in-addr.arpa'}->{timeout} = 1;
 ## test 4	init STATS
 my %STATS;
 cntinit($DNSBL,\%STATS);
-print "got: $_, exp: 3, bad key count\nnot "
-        unless ($_ = keys %STATS) == 3;
+print "got: $_, exp: 6, bad key count\nnot "
+        unless ($_ = keys %STATS) == 6;
 &ok;
 
 $STATS{'domain1.com'} = 3;

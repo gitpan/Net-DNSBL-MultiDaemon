@@ -5,9 +5,10 @@
 # Change 1..1 below to 1..last_test_to_print .
 # (It may become useful if the test is moved to ./t subdirectory.)
 
-BEGIN { $| = 1; print "1..28\n"; }
+BEGIN { $| = 1; print "1..31\n"; }
 END {print "not ok 1\n" unless $loaded;}
 
+#use diagnostics;
 use Net::DNSBL::Utilities qw(
 	write_stats
 	statinit
@@ -80,8 +81,8 @@ print "got: $Dkeys, exp: 4, bad key count\nnot "
 ## test 5	generate count stats hash
 my %count;
 cntinit($DNSBLS,\%count);
-print "got: $_, exp: 2, bad key count\nnot "
-	unless ($_ = keys %count) == 2;
+print "got: $_, exp: 5, bad key count\nnot "
+	unless ($_ = keys %count) == 5;
 &ok;
 
 ## test 6-7	check valid count keys
@@ -113,8 +114,8 @@ foreach( qw( domain1.com domain2.net ) ) {
 }
 
 ## test 11	re-check key count
-print "got: $_, exp: 2, bad key count\nnot "
-	unless ($_ = keys %count) == 2;
+print "got: $_, exp: 5, bad key count\nnot "
+	unless ($_ = keys %count) == 5;
 &ok;
 
 ## test 12	generate stats file with bogus entry
@@ -142,7 +143,11 @@ my $expected = qq
 100	domain2.net
 45	domain1.com
 33	unknown.org
-# 178 total
+0	BlackList
+# 178	total rejects
+#
+0	WhiteList
+0	Passed
 |;
 
 print "got:
@@ -154,8 +159,8 @@ $expected\nnot "
 
 ## test 14	start over with %count
 cntinit($DNSBLS,\%count);
-print "got: $_, exp: 2, bad key count\nnot "
-	unless ($_ = keys %count) == 2;
+print "got: $_, exp: 5, bad key count\nnot "
+	unless ($_ = keys %count) == 5;
 &ok;
 
 ##	add country codes
@@ -180,8 +185,8 @@ print "got: $statime\nexp: $date\nnot "
 &ok;
 
 ## test 18	re-check key count
-print "got: $_, exp: 4, bad key count\nnot "
-	unless ($_ = keys %count) == 4;
+print "got: $_, exp: 7, bad key count\nnot "
+	unless ($_ = keys %count) == 7;
 &ok;
 
 ## test 19-20	check valid count keys
@@ -232,7 +237,11 @@ $expected = qq
 50	domain1.com
 6	cc2
 5	cc1
-# 166 total
+5	BlackList
+# 171	total rejects
+#
+5	WhiteList
+5	Passed
 |;
 
 print "got:
@@ -242,11 +251,15 @@ $expected\nnot "
 	unless $sftext eq $expected;
 &ok;
 
+## test 25-31
 my %reload = qw(
 	domain1.com	0
 	domain2.net	0
 	cc1		0
 	cc2		0
+	BlackList	0
+	WhiteList	0
+	Passed		0
 );
 statinit($sfile,\%reload);
 

@@ -15,12 +15,13 @@ use AutoLoader 'AUTOLOAD';
 require Exporter;
 @ISA = qw(Exporter);
 
-$VERSION = do { my @r = (q$Revision: 0.02 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
+$VERSION = do { my @r = (q$Revision: 0.04 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
 
 @EXPORT_OK = qw(
         s_response 
         not_found  
         write_stats
+	bystat
         statinit
         cntinit
         DO
@@ -69,6 +70,7 @@ Net::DNSBL::Utilities - functions for DNSBL daemons
         s_response 
         not_found  
         write_stats
+	bystat
         statinit
         cntinit
 	list2hash
@@ -88,6 +90,7 @@ Net::DNSBL::Utilities - functions for DNSBL daemons
   s_response($mp,$resp,$id,$qdcount,$ancount,$nscount,$arcount);
   not_found($put,$name,$type,$id,$mp,$srp);
   write_stats($sfile,$cp,$sinit);
+  $rv = bystat($cp);
   $timestamp = statinit($Sfile,$cp);
   cntinit($DNSBL,$cp);
   list2hash(\@list,$cp,$val);
@@ -179,25 +182,51 @@ sub write_stats {
       print S $sinit;
       my $total = 0;
       foreach(sort {
-	  if ($a =~ /\./ && $b !~ /\./) {
-		-1;
-	  }
-	  elsif ($a !~ /\./ && $b =~ /\./) {
-		1;
-	  }
-	  else {
-		$cp->{$b} <=> $cp->{$a};
-	  }
-
+		bystat($cp); 
 	  } keys %$cp) {
+	next if $_ =~ /^(White|Passed)/;
 	$total += $cp->{"$_"};
 	print S $cp->{"$_"}, "\t$_\n";
       }
-      print S "# $total total\n";
+      print S "# $total\ttotal rejects\n#\n";
+      foreach(qw(WhiteList Passed)) {
+	print S $cp->{$_},"\t$_\n" if exists $cp->{$_};
+      }
       close S;
     }
     rename $sfile .'.tmp', $sfile;
   }
+}
+
+=item * $rv = bystat($cp);
+
+Return sort value +-1 or 0 for stat sort
+
+  input:	$a,$b sort values
+		pointer to count hash
+  returns:	sort decision value
+
+=cut
+
+sub bystat {
+  my $cp = shift;
+	  if ($a =~ /\./ && $b !~ /\./) {		# sort domains to top
+	    -1;
+	  }
+	  elsif ($a !~ /\./ && $b =~ /\./) {
+	    1;
+	  }
+	  elsif ($a =~ /Black|White|Pass/ &&		# sort White/Black/Passed to bottom
+		 $b !~ /Black|White|Pass/) {
+	    1;
+	  }
+	  elsif ($a !~ /Black|White|Pass/ &&
+		 $b =~ /Black|White|Pass/) {
+	    -1;
+	  }
+	  else {					# sort by value, then alpha
+	    ($cp->{$b} <=> $cp->{$a}) || $a cmp $b;
+	  }
 }
 
 =item * $timestamp = statinit($Sfile,$cp);
@@ -259,6 +288,9 @@ sub cntinit {
     next unless $_ =~ /.+\..+/; 				# skip non-dnsbl entries
     $cp->{"$_"} = 0;	   					# set up statistics counters for preferential sort
   }
+  $cp->{WhiteList} = 0;					# add entries for known good/bad guys
+  $cp->{BlackList} = 0;
+  $cp->{Passed} = 0;
 }
 
 =item * list2hash(\@list,$cp,$val);
@@ -527,6 +559,7 @@ sub A1276 {
 	s_response 
 	not_found  
 	write_stats
+	bystat
 	statinit
 	cntinit
 	list2hash
