@@ -45,7 +45,7 @@ my $DNSBL = {
 # suitable value for co-installation with bind
 # on the same host would be 127.0.0.1
 #
-#  MDipaddr	  => '0.0.0.0', # PROBABLY NOT WHAT YOU WANT
+  MDipaddr	  => '0.0.0.0', # PROBABLY NOT WHAT YOU WANT
 
 # The port that the daemon will listen on
 #

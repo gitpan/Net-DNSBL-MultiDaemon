@@ -2,7 +2,7 @@
 package Net::DNSBL::MultiDaemon;
 
 use strict;
-#use diagnostics;
+use diagnostics;
 
 use vars qw(
 	$VERSION @ISA @EXPORT_OK %EXPORT_TAGS *R_Sin
@@ -20,7 +20,7 @@ $D_NOTME     = 0x10; # return received response not for me
 $D_ANSTOP    = 0x20; # clear run OK flag if ANSWER present
 $D_VERBOSE   = 0x40; # verbose debug statements to STDERR
 
-$VERSION = do { my @r = (q$Revision: 0.04 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
+$VERSION = do { my @r = (q$Revision: 0.05 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
 
 @EXPORT_OK = qw(
         run
@@ -52,6 +52,7 @@ use Net::DNS::Codes qw(
 	NOERROR
 	REFUSED
 	NXDOMAIN
+	SERVFAIL
 	BITS_QUERY
 	RD
 	QR
@@ -62,10 +63,10 @@ use Net::DNS::ToolKit 0.16 qw(
 	get_ns
 );
 use Net::DNS::ToolKit::RR;
-#use Net::DNS::ToolKit::Debug qw(
-#	print_head
-#	print_buf
-#);
+use Net::DNS::ToolKit::Debug qw(
+	print_head
+	print_buf
+);
 
 use Net::DNSBL::Utilities qw(
         s_response 
@@ -649,7 +650,7 @@ sub run {
 	unless (  $tc == 0 &&
 		  $qr == 1 &&
 		  $opcode == QUERY &&
-		  ($rcode == NOERROR || $rcode == NXDOMAIN) &&
+		  ($rcode == NOERROR || $rcode == NXDOMAIN || $rcode == SERVFAIL) &&
 		  $qdcount == 1 &&
 		  exists $remoteThreads{$id}) {			# must not be my question!
 	  return 'not me 1' if $DEBUG & $D_NOTME;
@@ -684,8 +685,9 @@ sub run {
 	    }
 	  } # end of each ANSWER
 	}
-	elsif ($t == T_PTR && $rcode == NXDOMAIN) {		# no reverse lookup
+	elsif ($t == T_PTR && ($rcode == NXDOMAIN || $rcode == SERVFAIL)) { # no reverse lookup
 	  $answer = A1274;
+	  $ttl = 3600;
 	}
 
 	if ($answer) {						# if valid answer
