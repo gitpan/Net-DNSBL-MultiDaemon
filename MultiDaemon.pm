@@ -20,7 +20,7 @@ $D_NOTME     = 0x10; # return received response not for me
 $D_ANSTOP    = 0x20; # clear run OK flag if ANSWER present
 $D_VERBOSE   = 0x40; # verbose debug statements to STDERR
 
-$VERSION = do { my @r = (q$Revision: 0.06 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
+$VERSION = do { my @r = (q$Revision: 0.07 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
 
 @EXPORT_OK = qw(
         run
@@ -639,6 +639,7 @@ sub run {
       }
 ##################### IF RESPONSE  ###############################
       while (vec($rout,$filenoR,1)) {				# A response
+undef $msg;
 	last unless recv($R,$msg,,PACKETSZ,0);			# ignore receive errors
 	if (length($msg) < HFIXEDSZ) {				# ignore if less then header size
 	  return 'short header' if $DEBUG & $D_SHRTHD;
@@ -658,7 +659,8 @@ sub run {
 	}
 	($l_Sin,$rip,$type,$zone,@blist) = @{$remoteThreads{$id}->{args}};
 
-	  ($off,$name,$t,$class) = $get->Question(\$msg,$off);
+	($off,$name,$t,$class) = $get->Question(\$msg,$off);
+
 	my $answer;
 	if ($ancount && $rcode == &NOERROR) {
 	  $name =~ /^(\d+\.\d+\.\d+\.\d+)\.(.+)$/;
@@ -688,6 +690,7 @@ sub run {
 	elsif ($t == T_PTR && ($rcode == NXDOMAIN || $rcode == SERVFAIL)) { # no reverse lookup
 	  $answer = A1274;
 	  $ttl = 3600;
+	  $nscount = $arcount = 0;
 	}
 
 	if ($answer) {						# if valid answer

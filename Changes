@@ -1,5 +1,11 @@
 Revision history for Perl extension Net::DNSBL::MultiDaemon
 
+0.07  Mon Dec  8 18:34:26 PST 2003
+	Having a little cockpit trouble today :-) Left out the
+	initialization for response when no in-addr.arpa record is found.
+	The nscount and arcount passed through from the PTR record must be 
+	set to zero.
+
 0.06  Mon Dec  8 13:29:57 PST 2003
 	Oops! left perl diagnostics turned on in 0.05
 
