@@ -1,5 +1,9 @@
 Revision history for Perl extension Net::DNSBL::MultiDaemon
 
+0.09  Fri Jan 16 15:09:32 PST 2004
+	updated Net::DNSBL::Utilities to 
+	print the totals at end of log file
+
 0.08  Wed Jan  7 11:08:30 PST 2004
 	Correct documentation on DEPENDENCIES to include 
 	Geo::IP::PurePerl and NetAddr::IP

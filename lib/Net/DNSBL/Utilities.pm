@@ -15,7 +15,7 @@ use AutoLoader 'AUTOLOAD';
 require Exporter;
 @ISA = qw(Exporter);
 
-$VERSION = do { my @r = (q$Revision: 0.01 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
+$VERSION = do { my @r = (q$Revision: 0.02 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
 
 @EXPORT_OK = qw(
         s_response 
@@ -177,6 +177,7 @@ sub write_stats {
     if (open(S,'>'. $sfile .'.tmp')) {
       print S '# last update '. localtime(time) ."\n";
       print S $sinit;
+      my $total = 0;
       foreach(sort {
 	  if ($a =~ /\./ && $b !~ /\./) {
 		-1;
@@ -189,8 +190,10 @@ sub write_stats {
 	  }
 
 	  } keys %$cp) {
+	$total += $cp->{"$_"};
 	print S $cp->{"$_"}, "\t$_\n";
       }
+      print S "# $total total\n";
       close S;
     }
     rename $sfile .'.tmp', $sfile;

@@ -142,6 +142,7 @@ my $expected = qq
 100	domain2.net
 45	domain1.com
 33	unknown.org
+# 178 total
 |;
 
 print "got:
@@ -231,6 +232,7 @@ $expected = qq
 50	domain1.com
 6	cc2
 5	cc1
+# 166 total
 |;
 
 print "got:
