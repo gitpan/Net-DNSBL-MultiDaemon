@@ -1,5 +1,8 @@
 Revision history for Perl extension Net::DNSBL::MultiDaemon
 
+0.14  Wed Oct  6 11:08:38 PDT 2004
+	update documentation
+
 0.13  Mon Aug  9 18:11:04 PDT 2004
 	Update rc.multi_dnsbl v1.05 to correct typo that caused
 	"Not a SCALAR reference at /etc/init.d/rc.multi_dnsbl line 118 (#1)"

@@ -184,7 +184,7 @@ INSTALLATION / CONFIGURATION / OPERATION
     below:
 
       FEATURE(`dnsbl',`pseudo.dnsbl',
-      `554 Rejected $&{client_addr} found in http://www.spamcannibal.org')dnl
+      `554 Rejected $&{client_addr} found in http://www.my.blacklist.org')dnl
 
 SYSTEM SIGNALS
     multi_dnsbl responds to the following system signals:
