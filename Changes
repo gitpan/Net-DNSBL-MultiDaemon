@@ -1,5 +1,23 @@
 Revision history for Perl extension Net::DNSBL::MultiDaemon
 
+0.15  Tue Feb 22 22:18:52 PST 2005
+	Add support for IPv6 records in 'additional' section of answers
+	requires Net::DNS::ToolKit 0.24
+
+	Commentary:
+	Some DNSBL's are now including IPv6 AAAA records in the "additional"
+	section of the query response. Previous versions of MultiDaemon
+	hardwired an "A" response for all the records in that section. 
+	When an AAAA record was encountered, it would send a packet of the 
+	wrong length which would produce an "unexpected end of data" error
+	in the "named" daemon making the query. Note, that these records are 
+	returned by MultiDaemon to assist in tracking the origin of the Query 
+	though they are always unused since the MultiDaemon is seen by the 
+	client as being on it's underlying host and the glue records from
+	the true responding host are in this circumstance extra baggage.
+	This release checks for the presence of both A and AAAA records in 
+	the "additional" section and discards any other record types.
+
 0.14  Wed Oct  6 11:08:38 PDT 2004
 	update documentation
 

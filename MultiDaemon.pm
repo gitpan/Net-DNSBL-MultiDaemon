@@ -20,7 +20,7 @@ $D_NOTME     = 0x10; # return received response not for me
 $D_ANSTOP    = 0x20; # clear run OK flag if ANSWER present
 $D_VERBOSE   = 0x40; # verbose debug statements to STDERR
 
-$VERSION = do { my @r = (q$Revision: 0.14 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
+$VERSION = do { my @r = (q$Revision: 0.15 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
 
 @EXPORT_OK = qw(
         run
@@ -35,6 +35,7 @@ use Socket;
 use Net::DNS::Codes qw(
 	TypeTxt
 	T_A
+	T_AAAA
 	T_ANY
 	T_MX
 	T_CNAME
@@ -723,8 +724,15 @@ sub run {
 	  foreach(0..$arcount -1) {
 	    ($off,$Oname,$Otype,$Oclass,$Ottl,$Ordlength,$Odata)
 		= $get->next(\$msg,$off);
-	    ($noff,@dnptrs) = $put->A(\$nmsg,$noff,\@dnptrs,
-		$Oname,$Otype,$Oclass,$Ottl,$Odata);
+	    if ($Otype == T_A) {
+		($noff,@dnptrs) = $put->A(\$nmsg,$noff,\@dnptrs,
+		    $Oname,$Otype,$Oclass,$Ottl,$Odata);
+	    } elsif ($Otype == T_AAAA) {
+		($noff,@dnptrs) = $put->AAAA(\$nmsg,$noff,\@dnptrs,
+		    $Oname,$Otype,$Oclass,$Ottl,$Odata);
+	    } else {
+		next;		# skip unknown authority types
+	    }
 	  }
 	  $msg = $nmsg;
 	  $ROK = 0 if $DEBUG & $D_ANSTOP;
