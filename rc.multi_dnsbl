@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 #
 # rc.multi_dnsbl
-# version 1.02, 11-7-03
+# version 1.04, 11-28-03
 #
 #
 #################################################################
@@ -33,13 +33,15 @@ use lib qw(blib/lib blib/arch);
 use Socket;
 use Net::DNSBL::MultiDaemon qw(
 	run
+	$D_VERBOSE
+);
+
+use Net::DNSBL::Utilities qw(
 	statinit
 	cntinit
 	DO
 	open_udpNB
-	$D_VERBOSE
 );
-
 my $daemon = 0;
 my $LogLevel = 0;
 
@@ -112,6 +114,8 @@ while (1) {
   usage('no zone name')
 	unless $DNSBL->{MDzone};
   cntinit($DNSBL,\%STATS);
+  list2hash($DNSBL->{BBC},\%STATS)
+	if $DNSBL->{BBC} && ref $DNSBL->{BBC} eq 'ARRAY' && @${$DNSBL->{BBC}};
   usage('statfile path does not exist or is not writable')
 	unless ($StatStamp = statinit($DNSBL->{MDstatfile},\%STATS));
   $DNSBL->{MDstatrefresh} = 300 unless $DNSBL->{MDstatrefresh};

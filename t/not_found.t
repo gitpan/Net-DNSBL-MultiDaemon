@@ -8,7 +8,7 @@
 BEGIN { $| = 1; print "1..2\n"; }
 END {print "not ok 1\n" unless $loaded;}
 
-use Net::DNSBL::MultiDaemon qw(
+use Net::DNSBL::Utilities qw(
 	not_found
 );
 

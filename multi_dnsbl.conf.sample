@@ -3,7 +3,7 @@
 # multi_dnsbl.conf
 # Configuration for multi_dnsbl
 #
-# version 1.01, 11-5-03
+# version 1.02, 11-25-03
 #
 # ################## NOTE # NOTE # NOTE ###############################	#
 #									#
@@ -56,6 +56,65 @@ my $DNSBL = {
 #
 #  MDsyslog	  => 'LOG_WARNING',
 
+# A multi-formated array of IP address that will never be tarpitted.
+#
+# WARNING: if you are using a private network, then you should include the 
+# address description for the net/subnets that you are using or you might
+# find your DMZ or internal mail servers blocked since many DNSBLS list the
+# private network addresses as BLACKLISTED
+#
+#       127./8, 10./8, 172.16/12, 192.168/16
+#
+#       class A         xxx.0.0.0/8		255.0.0.0
+#       class B         xxx.xxx.0.0/16		255.255.0.0
+#       class C         xxx.xxx.xxx.0/24	255.255.255.0
+#       128 subnet      xxx.xxx.xxx.xxx/25	255.255.255.128
+#        64 subnet      xxx.xxx.xxx.xxx/26	255.255.255.192
+#        32 subnet      xxx.xxx.xxx.xxx/27	255.255.255.224
+#        16 subnet      xxx.xxx.xxx.xxx/28	255.255.255.240
+#         8 subnet      xxx.xxx.xxx.xxx/29	255.255.255.248
+#         4 subnet      xxx.xxx.xxx.xxx/30	255.255.255.252
+#         2 subnet      xxx.xxx.xxx.xxx/31	255.255.255.254
+#       single address  xxx.xxx.xxx.xxx/32	255.255.255.255
+#
+  'IGNORE'      => [
+#           # a single address
+#       '11.22.33.44',
+#           # a range of ip's, ONLY VALID WITHIN THE SAME CLASS 'C'
+#       '22.33.44.55 - 22.33.44.65',
+#           # a CIDR range
+#       '5.6.7.16/28',
+#           # a range specified with a netmask
+#       '7.8.9.128/255.255.255.240',
+# 
+#	    # you may want these
+#	'10.0.0.0/8',
+#	'172.16.0.0/12',
+#	'192.168.0.0/16',
+            # this should ALWAYS be here
+        '127.0.0.0/8',  # ignore all test entries and localhost
+  ],
+
+# A multi-formatted array of addresses that will ALWAYS be tarpitted
+# formats are the same as above
+#
+  'BLOCK'	=> [
+],
+
+# A list of COUNTRIES to block entirely
+# BBC == Block By Country
+#
+# To print a complete list of countries and country codes, 
+# use the utilty script 'list_countries.pl'
+#
+# Use the 2 letter country codes in the array below
+# 
+# i.e. US MX CN TW etc...
+#
+  'BBC'		=> [qw(
+	CN
+)],
+
 # all dnsbl servers must have a record a config entry as follows:
 #
 # 'zone.name'	=> {
@@ -69,6 +128,16 @@ my $DNSBL = {
 # The SpamCannibal sc_Blacklist.conf file has additional parameters that are
 # fully compatible with this file. See the SpamCannibal documentation and
 # sample files for further information.
+#
+# To check that ip addresses have some kind of reverse DNS entry, add a zone
+# for in-addr.arpa as shown below. You must have reverse DNS entries for 
+# ip blocks 127, 10, 172, 192 or use the IGNORE blocks above to prevent
+# rejects for these address blocks as they DO NOT HAVE worldwide RDNS
+
+  'in-addr.arpa'	=> {	# check for lack of reverse DNS
+  # accept is not needed for reverse DNS checking
+	timeout	    => 15,
+  },
 
 # working, sample file entries
 
@@ -86,6 +155,7 @@ my $DNSBL = {
 		'127.0.0.11' =>	'bad config -- MX or A records inaccurate',
 		'127.0.0.12' =>	'no mail ever sent from these domains',
   	},
+	timeout	    => 15,
   },
 
   'dnsbl.njabl.org'	=> {	# see http://dnsbl.njabl.org/use.html
@@ -97,12 +167,14 @@ my $DNSBL = {
 		'127.0.0.8'  =>	'open web - form mail servers',
 		'127.0.0.9'  =>	'open proxy servers',
 	},
+	timeout	    => 15,
   },
 
   'relays.ordb.org'	=> {	# see http://www.ordb.org/faq/#usage_dns
 	accept	=> {
 		'127.0.0.2' => '',
 	},
+	timeout	    => 15,
   },
 
   'dsbl.org'	=>	{	# see http://dsbl.org/usage
@@ -115,47 +187,55 @@ my $DNSBL = {
 	accept	=> {
 		'127.0.0.2' => '',
 	},
+	timeout	    => 15,
   },
 
   'cbl.abuseat.org'	=> {	# see http://cbl.abuseat.org
 	accept  => {
 		'127.0.0.2' => '',
 	},
+	timeout	    => 15,
   },
 
   'sbl.spamhaus.org'	=> {	# see http://www.spamhaus.org
 	accept	=> {
 		'127.0.0.2' => '',
 	},
+	timeout	    => 15,
   },
 
   'dynablock.easynet.nl' => {	# see http://abuse.easynet.nl/dynablocker.html
 	accept => {
 		'127.0.0.2' => '',
 	},
+	timeout	    => 15,
   },
 
   'blackholes.easynet.nl' => {	# see http://abuse.easynet.nl/dynablocker.html
 	accept => {
 		'127.0.0.2' => '',
 	},
+	timeout	    => 15,
   },
 
   'proxies.blackholes.easynet.nl' => {	# see http://abuse.easynet.nl/dynablocker.html
 	accept => {
 		'127.0.0.2' => '',
 	},
+	timeout	    => 15,
   },
 
   'list.dsbl.org'       => {    # see http://dsbl.org
 	accept => {
 		'127.0.0.2' => '', 
 	},
+	timeout	    => 15,
   },
 
   'spews.dnsbl.net.au'	=> {	# see http://www.spews.org/
 	accept	=> {
 		'127.0.0.2' => '',
 	},
+	timeout	    => 15,
   },
 };

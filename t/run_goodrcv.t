@@ -11,12 +11,14 @@ END {print "not ok 1\n" unless $loaded;}
 #use diagnostics;
 use Net::DNSBL::MultiDaemon qw(
 	:debug
+	run
+);
+use Net::DNSBL::Utilities qw(
 	write_stats
 	statinit
 	cntinit
         open_udpNB
 	DO
-	run
 );
 use Socket;
 use POSIX qw(EWOULDBLOCK);

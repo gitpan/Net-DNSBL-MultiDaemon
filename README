@@ -5,25 +5,11 @@ SYNOPSIS
       use Net::DNSBL::MultiDaemon qw(
             :debug
             run
-            s_response 
             bl_lookup  
-            not_found  
-            write_stats
-            statinit
-            cntinit
-            open_udpNB
-            DO
       );
 
       run($BLzone,$L,$R,$DNSBL,$STATs,$Run,$Sfile,$StatStamp,$DEBUG)
-      s_response($mp,$resp,$id,$qdcount,$ancount,$nscount,$arcount);
       bl_lookup($put,$mp,$rtp,$sinaddr,$alarm,$id,$rip,$type,$zone,@blist);
-      not_found($put,$name,$type,$id,$mp,$srp);
-      write_stats($sfile,$cp,$sinit);
-      $timestamp = statinit($Sfile,$cp);
-      cntinit($DNSBL,$cp);
-      $sock = open_udpNB();
-      $rv = DO($file)
 
 DESCRIPTION
     Net::DNSBL::MultiDaemon is the Perl module that implements the
@@ -48,14 +34,30 @@ DESCRIPTION
     periodically monitor the DNSBL statistics and/or update the MTA config
     file.
 
+    In addition to optimizing DNSBL interrogation, multi_dnsbl may be
+    configured to locally accept or reject specified IP's, IP ranges and to
+    reject specified countries by 2 character country code. By adding a
+    DNSBL entry of in-addr.arpa, IP's will be rejected that do not return
+    some kind of valid reverse DNS lookup.
+
+    Return 'A' records are those returned by the responding DNSBL except:
+
+      no reverse DNS        127.0.0.4
+      BLOCKED               127.0.0.5
+      Blocked by Country    127.0.0.6
+
 OPERATION
-    The configuration file for multi_dnsbl contains a list of DNSBL's to try
+    The configuration file for multi_dnsbl contains optional IGNORE (always
+    pass), optional BLOCK (always reject), and optional BBC (block by
+    country) entries against which all received queries are checked before
+    external DNSBL's are queried. IP's which pass IGNORE, BLOCK, and BBC
+    test are then checked against the prioritized list of DNSBL's to try
     when looking up an IP address for blacklisting. Internally, multi_dnsbl
-    maintains this list in sorted order based on the number of responses
-    that resulted in an acceptable A record being returned from the DNSBL
-    query. For each IP address query sent to multi_dnsbl, a query is sent to
-    each configured DNSBL sequentially until all DNSBL's have been queried
-    or an acceptable A record is returned.
+    maintains this list in sorted order (including 'in-addr.arpa') based on
+    the number of responses that resulted in an acceptable A record being
+    returned from the DNSBL query. For each IP address query sent to
+    multi_dnsbl, a query is sent to each configured DNSBL sequentially until
+    all DNSBL's have been queried or an acceptable A record is returned.
 
     Let us say for example that blackholes.easynet.nl (below) will return an
     A record and list.dsbl.org, bl.spamcop.net, dynablock.easynet.nl, will
@@ -236,9 +238,41 @@ PERL MODULE DESCRIPTION
           receiving replies for the multiple DNSBL's
 
         * $DNSBL
-          A pointer to the zone configuration hash of the form:
+          A pointer to the configuration hash of the form:
 
             $DNSBL = {
+              # Always allow these addresses
+                  'IGNORE' => [   # OPTIONAL
+                     # a single address
+                  '11.22.33.44',
+                     # a range of ip's, ONLY VALID WITHIN THE SAME CLASS 'C'
+                  '22.33.44.55 - 22.33.44.65',
+                     # a CIDR range
+                  '5.6.7.16/28',
+                     # a range specified with a netmask
+                  '7.8.9.128/255.255.255.240',
+                     # you may want these
+                  '10.0.0.0/8',
+                  '172.16.0.0/12',
+                  '192.168.0.0/16',
+                     # this should ALWAYS be here
+                  '127.0.0.0/8',  # ignore all test entries and localhost
+                  ],
+
+              # Always reject these addresses
+                  'BLOCK' => [    # OPTIONAL
+                     # same format as above
+                  ],
+
+              # Always block these countries
+                  'BBC'   => [qw(CN TW RO )],
+
+              # Check for reverse lookup failures - OPTIONAL
+                  'in-addr.arpa'  => {
+                      timeout     => 15,  # default timeout is 30
+                  },
+
+              # RBL zones as follows: OPTIONAL
                   'domain.name' => {
                       accept      => {
                           '127.0.0.2' => 'comment',
@@ -272,11 +306,13 @@ PERL MODULE DESCRIPTION
 
             $STATs = {
                   'domain.name' => count,
+                  etc...,
+                  'CountryCode' => count,
                   etc...
             };
 
           Initialize this array with cntinit($DNSBL,$cp), then
-          statinit($Sfile,$cp), below.
+          list2hash($BBC,$cp), then statinit($Sfile,$cp), below.
 
         * $Run
           A POINTER to the time in seconds to refresh the $STATs backing
@@ -295,15 +331,6 @@ PERL MODULE DESCRIPTION
         * $StatTimestamp
           Normally the value returned by statinit($Sfile,$cp), below.
 
-    * s_response($mp,$resp,$id,$qdcount,$ancount,$nscount,$arcount);
-        Put a short response into the message buffer pointed to by $mp by
-        sticking a new header on the EXISTING received query.
-
-          input:        msg pointer,
-                        id of question,
-                        qd, an, ns, ar counts
-          returns:      nada
-
     * bl_lookup($put,$mp,$rtp,$sinaddr,$alarm,$id,$rip,$type,$zone,@blist);
         Generates a query message for the first DNSBL in the @blist array.
         Creates a thread entry for the response and subsequent queries
@@ -321,62 +348,6 @@ PERL MODULE DESCRIPTION
                         array of remaining DNSBL's in sorted order
           returns:      nothing, puts stuff in thread queue
 
-    * not_found($put,$name,$type,$id,$mp,$srp);
-        Put a new 'not found' response in the buffer pointed to by $mp.
-
-          input:        put,
-                        name,
-                        type,
-                        id,
-                        message buffer pointer,
-                        SOA record pointer
-          returns:      nothing
-
-    * write_stats($sfile,$cp,$sinit);
-        Write out the contents of the accumulated statistics buffer to the
-        STATs file.
-
-          input:        statistics file path,
-                        pointer to count hash,
-                        initial timestamp line text
-          returns:      nothing
-
-    * $timestamp = statinit($Sfile,$cp);
-        Initialize the contents of the statistics hash with the file
-        contents of $Sfile, if $Sfile exists and there are corresponding
-        entries in the statistics hash. i.e. the statistics hash keys must
-        first be initialized with the DNSBL names.
-
-          input:        statistics file path,
-                        pointer to count hash
-          returns:      timestamp line for file
-                        or undef on failure
-
-    * cntinit($DNSBL,$cp);
-        Initialize the statistics count hash with DNSBL keys and set the
-        counts to zero.
-
-          input:        pointer to DNSBL hash,
-                        pointer to counts hash
-          returns:      nothing
-
-    * $rv = DO($file);
-        This is a fancy 'do file'. It first checks that the file exists and
-        is readable, then does a 'do file' to pull the variables and
-        subroutines into the current name space.
-
-          input:        file/path/name
-          returns:      last value in file
-                    or  undef on error
-                    prints warning
-
-    * $sock = open_udpNB();
-        Open and return a non-blocking UDP socket object
-
-          input:        none
-          returns:      pointer to socket object
-                        or undef on failure
-
 DEPENDENCIES
             Unix::Syslog
             Net::DNS::Codes
@@ -384,14 +355,7 @@ DEPENDENCIES
 
 EXPORT_OK
             run
-            s_response 
             bl_lookup  
-            not_found  
-            write_stats
-            statinit
-            cntinit
-            open_udpNB
-            DO
 
 EXPORT_TAGS :debug
       DEBUG is a set of semaphores for the 'run' function
@@ -424,6 +388,6 @@ COPYRIGHT
     59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
 SEE ALSO
-    the Net::DNS::Codes manpage, the Net::DNS::ToolKit manpage, the
-    Mail::SpamCannibal manpage
+    the Net::DNSBL::Utilities manpage, the Net::DNS::Codes manpage, the
+    Net::DNS::ToolKit manpage, the Mail::SpamCannibal manpage
 

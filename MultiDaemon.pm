@@ -5,7 +5,7 @@ use strict;
 #use diagnostics;
 
 use vars qw(
-	$VERSION @ISA @EXPORT_OK %EXPORT_TAGS *R_Sin *UDP
+	$VERSION @ISA @EXPORT_OK %EXPORT_TAGS *R_Sin
 	$D_CLRRUN $D_SHRTHD $D_TIMONLY $D_QRESP $D_NOTME $D_ANSTOP $D_VERBOSE
 );
 require Exporter;
@@ -20,27 +20,18 @@ $D_NOTME     = 0x10; # return received response not for me
 $D_ANSTOP    = 0x20; # clear run OK flag if ANSWER present
 $D_VERBOSE   = 0x40; # verbose debug statements to STDERR
 
-$VERSION = do { my @r = (q$Revision: 0.01 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
+$VERSION = do { my @r = (q$Revision: 0.04 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
 
 @EXPORT_OK = qw(
         run
-        s_response 
         bl_lookup  
-        not_found  
-        write_stats
-        statinit
-        cntinit
-        DO
-        open_udpNB
 );
 %EXPORT_TAGS = (
 	debug	=> [qw($D_CLRRUN $D_SHRTHD $D_TIMONLY $D_QRESP $D_NOTME $D_ANSTOP $D_VERBOSE)],
 );
 Exporter::export_ok_tags('debug');
 
-use Config;
 use Socket;
-use POSIX qw(:fcntl_h);
 use Net::DNS::Codes qw(
 	TypeTxt
 	T_A
@@ -51,6 +42,7 @@ use Net::DNS::Codes qw(
 	T_TXT
 	T_SOA
 	T_AXFR
+	T_PTR
 	C_IN
 	PACKETSZ
 	HFIXEDSZ
@@ -64,7 +56,7 @@ use Net::DNS::Codes qw(
 	RD
 	QR
 );
-use Net::DNS::ToolKit 0.15 qw(
+use Net::DNS::ToolKit 0.16 qw(
 	newhead
 	gethead
 	get_ns
@@ -75,12 +67,23 @@ use Net::DNS::ToolKit::RR;
 #	print_buf
 #);
 
-# used a lot, create once per session
-*UDP = \getprotobyname('udp');
+use Net::DNSBL::Utilities qw(
+        s_response 
+        not_found  
+	write_stats
+	statinit
+	A1271
+	A1272
+	A1274
+	A1275
+	A1276
+	list2NetAddr
+	matchNetAddr
+);
 
 # target for queries about DNSBL zones, create once per session
 # this is a global so it can be altered during testing
-*R_Sin = \scalar sockaddr_in(53,get_ns());
+*R_Sin = \scalar sockaddr_in(53,scalar get_ns());
 
 =head1 NAME
 
@@ -91,25 +94,11 @@ Net::DNSBL::MultiDaemon - multiple DNSBL emulator
   use Net::DNSBL::MultiDaemon qw(
 	:debug
         run
-        s_response 
         bl_lookup  
-        not_found  
-        write_stats
-        statinit
-        cntinit
-        open_udpNB
-        DO
   );
 
   run($BLzone,$L,$R,$DNSBL,$STATs,$Run,$Sfile,$StatStamp,$DEBUG)
-  s_response($mp,$resp,$id,$qdcount,$ancount,$nscount,$arcount);
   bl_lookup($put,$mp,$rtp,$sinaddr,$alarm,$id,$rip,$type,$zone,@blist);
-  not_found($put,$name,$type,$id,$mp,$srp);
-  write_stats($sfile,$cp,$sinit);
-  $timestamp = statinit($Sfile,$cp);
-  cntinit($DNSBL,$cp);
-  $sock = open_udpNB();
-  $rv = DO($file)
 
 =head1 DESCRIPTION
 
@@ -133,11 +122,27 @@ come back online. This eliminates the need to place DNSBL's in a particular orde
 your MTA's config file or periodically monitor the DNSBL statistics and/or update
 the MTA config file.
 
+In addition to optimizing DNSBL interrogation, B<multi_dnsbl> may be
+configured to locally accept or reject specified IP's, IP ranges and to
+reject specified countries by 2 character country code. By adding a DNSBL
+entry of B<in-addr.arpa>, IP's will be rejected that do not return some kind
+of valid reverse DNS lookup.
+
+Return 'A' records are those returned by the responding DNSBL except:
+
+  no reverse DNS	127.0.0.4
+  BLOCKED		127.0.0.5
+  Blocked by Country	127.0.0.6
+
 =head1 OPERATION
 
-The configuration file for B<multi_dnsbl> contains a list of DNSBL's to try
-when looking up an IP address for blacklisting. Internally, B<multi_dnsbl>
-maintains this list in sorted order based on the number of responses that
+The configuration file for B<multi_dnsbl> contains optional IGNORE (always
+pass), optional BLOCK (always reject), and optional BBC (block by country) entries against
+which all received queries are checked before external DNSBL's are queried.
+IP's which pass IGNORE, BLOCK, and BBC test are then checked against the
+prioritized list of DNSBL's to try when looking up an IP address for blacklisting. 
+Internally, B<multi_dnsbl> maintains this list in sorted order (including
+'in-addr.arpa') based on the number of responses that
 resulted in an acceptable A record being returned from the DNSBL query. For
 each IP address query sent to B<multi_dnsbl>, a query is sent to each
 configured DNSBL sequentially until all DNSBL's have been queried or an
@@ -294,7 +299,7 @@ The statistics file is updated on the next second tick.
 
 The statistics file is deleted, internal statistics then a new (empty)
 statistics file is written on the next second tick.
-  
+
 =back
 
 =head1 PERL MODULE DESCRIPTION
@@ -341,9 +346,41 @@ used for interogation an receiving replies for the multiple DNSBL's
 
 =item * $DNSBL
 
-A pointer to the zone configuration hash of the form:
+A pointer to the configuration hash of the form:
 
   $DNSBL = {
+    # Always allow these addresses
+	'IGNORE' => [	# OPTIONAL
+	   # a single address
+	'11.22.33.44',
+	   # a range of ip's, ONLY VALID WITHIN THE SAME CLASS 'C'
+	'22.33.44.55 - 22.33.44.65',
+	   # a CIDR range
+	'5.6.7.16/28',
+	   # a range specified with a netmask
+	'7.8.9.128/255.255.255.240',
+	   # you may want these
+	'10.0.0.0/8',
+	'172.16.0.0/12',
+	'192.168.0.0/16',
+	   # this should ALWAYS be here
+	'127.0.0.0/8',  # ignore all test entries and localhost
+	],
+
+    # Always reject these addresses
+	'BLOCK'	=> [	# OPTIONAL
+	   # same format as above
+	],
+
+    # Always block these countries
+	'BBC'	=> [qw(CN TW RO )],
+
+    # Check for reverse lookup failures - OPTIONAL
+	'in-addr.arpa'	=> {
+	    timeout	=> 15,  # default timeout is 30
+	},
+
+    # RBL zones as follows: OPTIONAL
 	'domain.name' => {
 	    accept	=> {
 		'127.0.0.2' => 'comment',
@@ -377,12 +414,15 @@ A pointer to a statistics collection array of the form:
 
   $STATs = {
 	'domain.name' => count,
+	etc...,
+	'CountryCode' => count,
 	etc...
   };
 
 Initialize this array with
-L<cntinit($DNSBL,$cp)|Net::DNSBL::MultiDaemon/cntinit>, then 
-L<statinit($Sfile,$cp)|Net::DNSBL::MultiDaemon/statinit>, below.
+L<cntinit($DNSBL,$cp)|Net::DNSBL::Utilities/cntinit>, then 
+L<list2hash($BBC,$cp)|Net::DNSBL::Utilities/list2hash>, then
+L<statinit($Sfile,$cp)|Net::DNSBL::Utilities/statinit>, below.
 
 =item * $Run
 
@@ -402,7 +442,7 @@ If $Sfile is undefined, then the time stamp need not be defined
 =item * $StatTimestamp
 
 Normally the value returned by
-L<statinit($Sfile,$cp)|Net::DNSBL::MultiDaemon/statinit>, below.
+L<statinit($Sfile,$cp)|Net::DNSBL::Utilities/statinit>, below.
 
 =back
 
@@ -417,7 +457,7 @@ sub run {
   $DEBUG = 0 unless $DEBUG;
   my $ROK = ($DEBUG & $D_CLRRUN) ? 0:1;
 
-  my (	$msg, $t,
+  my (	$msg, $t, $targetIP, $cc, $comment,
 	$Oname,$Otype,$Oclass,$Ottl,$Ordlength,$Odata,
 	$off,$id,$qr,$opcode,$aa,$tc,$rd,$ra,$mbz,$ad,$cd,$rcode,
 	$qdcount,$ancount,$nscount,$arcount,
@@ -425,7 +465,8 @@ sub run {
 	$ttl,$rdl,@rdata,
 	$l_Sin,$rip,$zone,@blist,
 	%remoteThreads,
-	$rin,$rout,$nfound);
+	$rin,$rout,$nfound,
+	$BBC,@NAignore,@NAblock);
 
   my $LogLevel = 0;
   if ($DNSBL->{MDsyslog}) {		# if logging requested
@@ -433,6 +474,22 @@ sub run {
     import  Unix::Syslog @Unix::Syslog::EXPORT_OK;
     $LogLevel = eval "$DNSBL->{MDsyslog}";
 ## NOTE, logging must be initiated by the caller
+  }
+
+# generate NetAddr objects for addresses to always pass
+  if ($DNSBL->{IGNORE} && ref $DNSBL->{IGNORE} eq 'ARRAY' && @{$DNSBL->{IGNORE}}) {
+    list2NetAddr($DNSBL->{IGNORE},\@NAignore);
+  }
+
+# generate NetAddr objects for addresses to always reject
+  if ($DNSBL->{BLOCK} && ref $DNSBL->{BLOCK} eq 'ARRAY' && @{$DNSBL->{BLOCK}}) {
+    list2NetAddr($DNSBL->{BLOCK},\@NAblock);
+  }
+
+# fetch pointer to Geo::IP methods
+  if ($DNSBL->{BBC} && ref $DNSBL->{BBC} eq 'ARRAY' && @{$DNSBL->{BBC}}) {
+    require Geo::IP::PurePerl;
+    $BBC = new Geo::IP::PurePerl;
   }
 
   my $filenoL = fileno($L);
@@ -499,8 +556,10 @@ sub run {
 	  return 'query response' if $DEBUG & $D_QRESP;
 	  last;
 	}
+	$comment = 'no bl';
 	if ($opcode != QUERY) {
 	  s_response(\$msg,NOTIMP,$id,1,0,0,0);
+	  $comment = 'not implemented';
 	} elsif (
 		$qdcount != 1 || 
 		$ancount || 
@@ -508,15 +567,18 @@ sub run {
 		$arcount
 		) {
 	  s_response(\$msg,FORMERR,$id,$qdcount,$ancount,$nscount,$arcount);
+	  $comment = 'format error';
 	} elsif (
 		(($off,$name,$type,$class) = $get->Question(\$msg,$off)) && 
 		! $name) {					# name must exist
-	  s_response(\$msg,FORMERR,$id,1,0,0,0)
+	  s_response(\$msg,FORMERR,$id,1,0,0,0);
+	  $comment = 'format error';
 	} elsif ($class != C_IN) {				# class must be C_IN
 	  s_response(\$msg,REFUSED,$id,$qdcount,$ancount,$nscount,$arcount);
+	  $comment = 'refused';
 	} elsif ($name !~ /$BLzone$/i) {			# question must be for this zone
-	  s_response(\$msg,NXDOMAIN,$id,1,0,0,0)
-
+	  s_response(\$msg,NXDOMAIN,$id,1,0,0,0);
+	  $comment = 'not this zone';
 	} else {
 
 # THIS IS OUR ZONE request, generate a thread to handle it
@@ -525,15 +587,34 @@ sub run {
 
 	  if (	$type == T_A ||
 		$type == T_ANY) {
-	    if ($name =~ /^(\d+\.\d+\.\d+\.\d+)\.(.+)/ &&
+	    if ($name =~ /^((\d+)\.(\d+)\.(\d+)\.(\d+))\.(.+)/ &&
 		($rip = $1) &&
-		($zone = $2) &&
+		($targetIP = "$5.$4.$3.$2") &&
+		($zone = $6) &&
 		$BLzone eq lc $zone) {
-	      @blist = sort {$STATs->{"$b"} <=> $STATs->{"$a"}} keys %$STATs;
-	      bl_lookup($put,\$msg,\%remoteThreads,$l_Sin,_alarm($blist[0]),$id,$rip,$type,$zone,@blist);
-	      send($R,$msg,0,$R_Sin);				# udp may not block
-	      print STDERR $blist[0] if $DEBUG & $D_VERBOSE;
-	      last;
+	      if (@NAignore && matchNetAddr($targetIP,\@NAignore)) {	# check for IP's to always pass
+		not_found($put,$name,$type,$id,\$msg,$SOAptr);		# return unconditional NOT FOUND
+		$comment = 'IGNORE';
+	      }
+	      elsif (@NAblock && matchNetAddr($targetIP,\@NAblock)) {	# check for IP's to always block
+		($msg) = _ansrbak($put,$id,1,$rip,$zone,$type,3600,A1275);	# answer 127.0.0.5
+		$comment = 'BLOCK';
+	      }
+	      elsif ($BBC &&						# check for IP's to block by country
+		     ($cc = $BBC->country_code_by_addr($targetIP)) &&
+		     (grep($cc eq $_,@{$DNSBL->{BBC}}))) {
+		($msg) = _ansrbak($put,$id,1,$rip,$zone,$type,3600,A1276);	# answer 127.0.0.6
+		$STATs->{$cc} += 1;					# bump statistics count
+		$newstat = 1;						# notify refresh that update may be needed
+		$comment = "block $cc";
+	      }
+	      else {
+		@blist = sort {$STATs->{"$b"} <=> $STATs->{"$a"}} keys %$STATs;
+		bl_lookup($put,\$msg,\%remoteThreads,$l_Sin,_alarm($blist[0]),$id,$rip,$type,$zone,@blist);
+		send($R,$msg,0,$R_Sin);				# udp may not block
+		print STDERR $blist[0] if $DEBUG & $D_VERBOSE;
+		last;
+	      }
 	    } else {
 	      not_found($put,$name,$type,$id,\$msg,$SOAptr);
 	    }
@@ -545,12 +626,14 @@ sub run {
 	    not_found($put,$name,$type,$id,\$msg,$SOAptr);
 	  } elsif ($type == T_AXFR) {
 	    s_response(\$msg,REFUSED,$id,1,0,0,0);
+	    $comment = 'refused AXFR';
 	  } else {
 	    s_response(\$msg,NOTIMP,$id,1,0,0,0);
+	    $comment = 'not implemented';
 	  }
 	}
 	send($L,$msg,0,$l_Sin);					# udp may not block on send
-	print STDERR " no bl\n" if $DEBUG & $D_VERBOSE;
+	print STDERR " $comment\n" if $DEBUG & $D_VERBOSE;
 	last;
       }
 ##################### IF RESPONSE  ###############################
@@ -581,7 +664,7 @@ sub run {
 	  my $z = lc $2;
 	  unless (  $z eq lc $blist[0] &&			# not my question
 	  	    $1 eq $rip &&				# not my question
-		    $t == T_A &&				# not my question
+		    ($t == T_A || $t == T_PTR) &&		# not my question
 		    $class == C_IN) {				# not my question
 	    return 'not me 2' if $DEBUG & $D_NOTME;
 	    last;
@@ -601,24 +684,16 @@ sub run {
 	    }
 	  } # end of each ANSWER
 	}
+	elsif ($t == T_PTR && $rcode == NXDOMAIN) {		# no reverse lookup
+	  $answer = A1274;
+	}
+
 	if ($answer) {						# if valid answer
 	  delete $remoteThreads{$id};
 	  $STATs->{"$blist[0]"} += 1;				# bump statistics count
 	  $newstat = 1;						# notify refresh that update may be needed
-	  my $nmsg;
-	  my $noff = newhead(\$nmsg,
-		$id,
-		BITS_QUERY | QR,
-		1,1,1,$arcount + $nscount +1,
-	  );
-	  ($noff,my @dnptrs) = $put->Question(\$nmsg,$noff,	# 1 question
-		$rip .'.'. $zone,$type,C_IN);			# type is T_A or T_ANY
-	  ($noff,@dnptrs) = $put->A(\$nmsg,$noff,\@dnptrs,		# 1 answer
-		$rip .'.'. $zone,T_A,C_IN,$ttl,$answer);
-	  ($noff,@dnptrs) = $put->NS(\$nmsg,$noff,\@dnptrs,	# 1 authority
-		$zone,T_NS,C_IN,86400,'localhost');
-	  ($noff,@dnptrs) = $put->A(\$nmsg,$noff,\@dnptrs,	# 1 additional glue
-		'localhost',T_A,C_IN,86400,inet_aton('127.0.0.1'));	# lie about nameserver
+	  my($nmsg,$noff,@dnptrs) =				# make proto answer
+		_ansrbak($put,$id,$nscount + $arcount +1,$rip,$zone,$type,$ttl,$answer);
 
 # add the ns section from original reply into the authority section so we can see where it came from, it won't hurt anything
 	  foreach(0..$nscount -1) {
@@ -686,7 +761,16 @@ sub run {
 	  }
 	}
 
-	if (do {
+	if ($blist[0] eq 'in-addr.arpa') {			# expired reverse DNS lookup ?
+	  delete $remoteThreads{$id};
+	  $deadDNSBL{"$blist[0]"} = 0;				# reset timeout (this one never expires)
+	  $STATs->{"$blist[0]"} += 1;				# bump statistics count
+	  $newstat = 1;						# notify refresh that update may be needed
+	  ($msg) = _ansrbak($put,$id,1,$rip,$zone,$type,3600,A1274);
+	  send($L,$msg,0,$l_Sin);
+	  print STDERR " expired Rdns\n" if $DEBUG & $D_VERBOSE;
+	}
+	elsif (do {
 		print STDERR '?' if $DEBUG & $D_VERBOSE;
 		my $rv = 0;
 		while(!$rv) {
@@ -724,27 +808,28 @@ sub run {
   write_stats($Sfile,$STATs,$StatStamp) if $newstat;	# always update on exit if needed
 }
 
-=item * s_response($mp,$resp,$id,$qdcount,$ancount,$nscount,$arcount);
-
-Put a short response into the message buffer pointed to by $mp by
-sticking a new header on the EXISTING received query.
-
-  input:	msg pointer,
- 		id of question,
- 		qd, an, ns, ar counts
-  returns: 	nada
-
-=cut
-
-sub s_response {
-  my($mp,$resp,$id,$qdcount,$ancount,$nscount,$arcount) = @_;
-  my $newhead;
-  my $off = newhead(\$newhead,
+# answer back prototype
+#
+# input:	$put,$id,$arcount,$rip,$zone,$type,$ttl,$answer
+# returns:	$message,$off,@dnptrs
+#
+sub _ansrbak {
+  my($put,$id,$arc,$rip,$zone,$type,$ttl,$ans) = @_;
+  my $nmsg;
+  my $noff = newhead(\$nmsg,
 	$id,
-	BITS_QUERY | QR | $resp,
-	$qdcount,$ancount,$nscount,$arcount,
+	BITS_QUERY | QR,
+	1,1,1,$arc,
   );
-  substr($$mp,0,$off) = $newhead;
+  ($noff,my @dnptrs) = $put->Question(\$nmsg,$noff,	# 1 question
+	$rip .'.'. $zone,$type,C_IN);			# type is T_A or T_ANY
+  ($noff,@dnptrs) = $put->A(\$nmsg,$noff,\@dnptrs,		# 1 answer
+	$rip .'.'. $zone,T_A,C_IN,$ttl,$ans);
+  ($noff,@dnptrs) = $put->NS(\$nmsg,$noff,\@dnptrs,	# 1 authority
+	$zone,T_NS,C_IN,86400,'localhost');
+  ($noff,@dnptrs) = $put->A(\$nmsg,$noff,\@dnptrs,	# 1 additional glue
+	'localhost',T_A,C_IN,86400,A1271);		# lie about nameserver 127.0.0.1
+  return($nmsg,$noff,@dnptrs)
 }
 
 =item * bl_lookup($put,$mp,$rtp,$sinaddr,$alarm,$id,$rip,$type,$zone,@blist);
@@ -764,6 +849,8 @@ a thread entry for the response and subsequent queries should the first one fail
 		array of remaining DNSBL's in sorted order
   returns:	nothing, puts stuff in thread queue
 
+=back
+
 =cut
 
 sub bl_lookup {
@@ -773,167 +860,14 @@ sub bl_lookup {
 	BITS_QUERY | RD,
 	1,0,0,0,
   );
-  $put->Question($mp,$off,$rip .'.'. $blist[0],T_A,C_IN);
+  my $Qtype = ($blist[0] eq 'in-addr.arpa')
+	? &T_PTR
+	: &T_A;
+  $put->Question($mp,$off,$rip .'.'. $blist[0],$Qtype,C_IN);
   $rtp->{$id} = {
 	args	=> [$sinaddr,$rip,$type,$zone,@blist],
 	expire	=> time + $alarm,
   };
-}
-
-=item * not_found($put,$name,$type,$id,$mp,$srp);
-
-Put a new 'not found' response in the buffer pointed to by $mp.
-
-  input:	put,
-		name,
-		type,
-		id,
-		message buffer pointer,
-		SOA record pointer
-  returns:	nothing
-
-=cut
-
-sub not_found {
-  my($put,$name,$type,$id,$mp,$srp) = @_;
-  my $off = newhead($mp,
-	$id,
-	BITS_QUERY | QR | NXDOMAIN,
-	1,0,1,0,
-  );
-  my @dnptrs;
-  ($off,@dnptrs) = $put->Question($mp,$off,$name,$type,C_IN);
-#  ($off,@dnptrs) = 
-  $put->SOA($mp,$off,\@dnptrs,@$srp);
-}
-
-=item * write_stats($sfile,$cp,$sinit);
-
-Write out the contents of the accumulated statistics buffer to the STATs file.
-
-  input:	statistics file path,
-		pointer to count hash,
-		initial timestamp line text
-  returns:	nothing
-
-=cut
-
-sub write_stats {
-  my($sfile,$cp,$sinit) = @_;
-  if ($sfile) {         # record sfile on DNSBL lookups
-    if (open(S,'>'. $sfile .'.tmp')) {
-      print S '# last update '. localtime(time) ."\n";
-      print S $sinit;
-      foreach(sort {$cp->{"$b"} <=> $cp->{"$a"}} keys %$cp) {
-        print S $cp->{"$_"}, "\t$_\n";
-      }
-      close S;
-    }
-    rename $sfile .'.tmp', $sfile;
-  }
-}
-
-=item * $timestamp = statinit($Sfile,$cp);
-
-Initialize the contents of the statistics hash with the file contents
-of $Sfile, if $Sfile exists and there are corresponding entries in 
-the statistics hash. i.e. the statistics hash keys must first be
-initialized with the DNSBL names.
-
-  input:	statistics file path,
-		pointer to count hash
-  returns:	timestamp line for file
-		or undef on failure
-
-=cut
-
-sub statinit {
-  my($Sfile,$cp) = @_;
-  my $sti = '# stats since '. localtime(time) ."\n";
-  if ($Sfile) {							# stats entry??
-    if ( -e $Sfile) {						# old file exists
-      if (open(S,$Sfile)) {					# skip if bad open
-        foreach(<S>) {
-          $sti = $_ if $_ =~ /# stats since/;		# use old init time if present
-          next unless $_ =~ /^(\d+)\s+(.+)/;
-          $cp->{"$2"} = $1 if exists $cp->{"$2"}		# add only existing dnsbls
-        }
-        close S;
-	return $sti;
-      }
-    }
-    elsif ($Sfile =~ m|[^/]+$| && -d $`) {			# directory exists, no file yet
-      return $sti;						# ok to proceed
-    }
-  }
-  return undef;
-}
-
-=item * cntinit($DNSBL,$cp);
-
-Initialize the statistics count hash with DNSBL keys and set the counts to zero.
-
-  input:	pointer to DNSBL hash,
-		pointer to counts hash
-  returns:	nothing
-
-=cut
-
-sub cntinit {
-  my ($DNSBL,$cp) = @_;
-  %$cp = ();
-  foreach(keys %$DNSBL) {
-    next unless $_ =~ /.+\..+/; 				# skip non-dnsbl entries
-    $cp->{"$_"} = 0;           					# set up statistics counters for preferential sort
-  }
-}
-
-=item * $rv = DO($file);
-
-This is a fancy 'do file'. It first checks that the file exists and is
-readable, then does a 'do file' to pull the variables and subroutines into
-the current name space.
-
-  input:	file/path/name
-  returns:	last value in file
-	    or	undef on error
-	    prints warning
-
-=cut
-
-sub DO($) {
-  my $file = shift;
-  return undef unless
-	$file &&
-	-e $file &&
-	-f $file &&
-	-r $file;
-  $_ = $Config{perlpath};		# bring perl into scope
-  return undef if eval q|system($_, '-w', $file)|;
-  do $file;
-}
-
-=item * $sock = open_udpNB();
-
-Open and return a non-blocking UDP socket object
-
-  input:	none
-  returns:	pointer to socket object
-		or undef on failure
-
-=back
-
-=cut
-
-sub open_udpNB {
-#  my $proto = getprotobyname('udp');
-  my $flags;
-  local *SOCKET;
-  return undef unless socket(SOCKET,PF_INET,SOCK_DGRAM,$UDP);
-  return *SOCKET if (($flags = fcntl(SOCKET,F_GETFL,0)) || 1) &&
-		     fcntl(SOCKET,F_SETFL,$flags | O_NONBLOCK);
-  close SOCKET;
-  return undef;
 }
 
 =head1 DEPENDENCIES
@@ -945,14 +879,7 @@ sub open_udpNB {
 =head1 EXPORT_OK
 
         run
-        s_response 
         bl_lookup  
-        not_found  
-        write_stats
-        statinit
-        cntinit
-        open_udpNB
-        DO
 
 =head1 EXPORT_TAGS :debug
 
@@ -989,7 +916,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
 =head1 SEE ALSO
 
-L<Net::DNS::Codes>, L<Net::DNS::ToolKit>, L<Mail::SpamCannibal>
+L<Net::DNSBL::Utilities>, L<Net::DNS::Codes>, L<Net::DNS::ToolKit>, L<Mail::SpamCannibal>
 
 =cut
 

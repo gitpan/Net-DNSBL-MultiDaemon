@@ -5,13 +5,14 @@
 # Change 1..1 below to 1..last_test_to_print .
 # (It may become useful if the test is moved to ./t subdirectory.)
 
-BEGIN { $| = 1; print "1..24\n"; }
+BEGIN { $| = 1; print "1..28\n"; }
 END {print "not ok 1\n" unless $loaded;}
 
-use Net::DNSBL::MultiDaemon qw(
+use Net::DNSBL::Utilities qw(
 	write_stats
 	statinit
 	cntinit
+	list2hash
 	DO
 );
 
@@ -156,6 +157,10 @@ print "got: $_, exp: 2, bad key count\nnot "
 	unless ($_ = keys %count) == 2;
 &ok;
 
+##	add country codes
+my @cc = qw( cc1 cc2 );
+list2hash(\@cc,\%count);
+
 ## test 15-16	check valid count keys
 foreach( qw( domain1.com domain2.net ) ) {
   unless (exists $count{"$_"} &&
@@ -174,8 +179,8 @@ print "got: $statime\nexp: $date\nnot "
 &ok;
 
 ## test 18	re-check key count
-print "got: $_, exp: 2, bad key count\nnot "
-	unless ($_ = keys %count) == 2;
+print "got: $_, exp: 4, bad key count\nnot "
+	unless ($_ = keys %count) == 4;
 &ok;
 
 ## test 19-20	check valid count keys
@@ -202,6 +207,9 @@ print "got: domain2.net => $_, exp: 100\nnot "
 foreach(keys %count) {
   $count{"$_"} += 5;
 }
+
+$count{cc2} += 1;
+
 $now = next_sec();
 $update = localtime($now);
 write_stats($sfile,\%count,$statime);
@@ -221,6 +229,8 @@ $expected = qq
 # stats since $date
 105	domain2.net
 50	domain1.com
+6	cc2
+5	cc1
 |;
 
 print "got:
@@ -230,3 +240,16 @@ $expected\nnot "
 	unless $sftext eq $expected;
 &ok;
 
+my %reload = qw(
+	domain1.com	0
+	domain2.net	0
+	cc1		0
+	cc2		0
+);
+statinit($sfile,\%reload);
+
+foreach(sort keys %count) {
+  print "exp: $_ => $count{$_}, got: $reload{$_}\nnot "
+	unless $count{$_} == $reload{$_};
+  &ok;
+}

@@ -1,4 +1,31 @@
 Revision history for Perl extension Net::DNSBL::MultiDaemon
 
+0.04  Sun Dec  7 11:55:05 PST 2003
+	Oops! I neglected to import Net::DNSBL::Utilities::statinit
+	into Net::DNSBL::MultiDaemon so SIG{USR2} was causing a crash.
+
+0.03  Wed Nov 26 18:04:00 PST 2003
+
+	WARNING, you need to upgrade your rc.multi_daemon if this
+	if you have a previously installed version of this module.
+
+	split MultiDaemon into two modules so the utilities are 
+	available to new applications.
+
+	Created Net::DNSBL::Utilities
+
+	add logic to always allow 'IGNORE' block
+	add logic to always reject 'BLOCK' block
+	add logic to Block By Country
+	add logic to reject failed reverse DNS
+
+0.02  Sat Nov 22 16:03:59 PST 2003
+	sockaddr_in does not always ask for scalar arguments 
+	as expected on some perl/OS combinations, therefore
+	scalar arguments must be provided... in particular for 
+	the output of Net::DNS::ToolKit::get_ns which uses 
+	want_array (xs) to return scalar or array values.
+	Thanks to "Gary E. Miller" <gem@rellim.com> for spotting this bug.
+
 0.01  Fri Nov  7 11:18:07 PST 2003
 	initial release
