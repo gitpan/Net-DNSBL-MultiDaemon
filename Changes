@@ -1,5 +1,11 @@
 Revision history for Perl extension Net::DNSBL::MultiDaemon
 
+0.08  Wed Jan  7 11:08:30 PST 2004
+	Correct documentation on DEPENDENCIES to include 
+	Geo::IP::PurePerl and NetAddr::IP
+
+	update DNSBL's in config file to track Mail::Spamcannibal
+
 0.07  Mon Dec  8 18:34:26 PST 2003
 	Having a little cockpit trouble today :-) Left out the
 	initialization for response when no in-addr.arpa record is found.

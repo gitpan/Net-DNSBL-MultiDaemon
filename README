@@ -350,6 +350,8 @@ PERL MODULE DESCRIPTION
 
 DEPENDENCIES
             Unix::Syslog
+            Geo::IP::PurePerl
+            NetAddr::IP
             Net::DNS::Codes
             Net::DNS::ToolKit
 
