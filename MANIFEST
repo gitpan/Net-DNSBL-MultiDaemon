@@ -1,0 +1,17 @@
+MANIFEST
+README
+Makefile.PL
+MultiDaemon.pm
+Changes
+GPL
+rc.multi_dnsbl
+multi_dnsbl.conf.sample
+t/bl_lookup.t
+t/not_found.t
+t/open_udpNB.t
+t/run_exceptions.t
+t/run_goodrcv.t
+t/run_timer.t
+t/s_response.t
+t/statscount.t
+local/test.conf

@@ -1,0 +1,161 @@
+#!/usr/bin/perl
+
+# multi_dnsbl.conf
+# Configuration for multi_dnsbl
+#
+# version 1.01, 11-5-03
+#
+# ################## NOTE # NOTE # NOTE ###############################	#
+#									#
+# The format of this file is full compatible with the configuration	#
+# file for SpamCannibal sc_BLcheck.pl. The config parameters may be	#
+# be added directly to 'sc_BlackList.conf' so that a common zone	#
+# array can be used for the tarpit and MTA.				#
+#									#
+# #####################################################################	#
+
+my $DNSBL = {
+
+# the OPTIONAL name of a file that will contain 'hit' statistics for DNSBLS
+# this file will be used to seed the sort order of DNSBL checking if it is
+# present and will be updated with the 'added' counts of each run. If it 
+# is deleted, it will be recreated with a new time tag at the beginning.
+#
+  MDstatfile	  => '/path/to/statistics/file.txt',
+
+# The path for the directory where the pid file will live
+#
+  MDpidpath	  => '/path/to/pidfiles', # /var/run
+
+# The zone name for this PSEUDO DNSBL
+#
+  MDzone	  => 'pseudo.dnsbl',
+
+###### The following optional configuration parameters 
+###### are shown with their default values
+# 
+# Update frequency for the "stats" file, no
+# update occurs if there is no new information
+#
+#  MDstatrefresh => 300,	# seconds
+
+# The IPaddress that the daemon will listen on.
+# The default will listen on ALL interfaces,
+# this is probably not what you want. A more
+# suitable value for co-installation with bind
+# on the same host would be 127.0.0.1
+#
+#  MDipaddr	  => '0.0.0.0', # PROBABLY NOT WHAT YOU WANT
+
+# The port that the daemon will listen on
+#
+#  MDport	  => 9953,
+
+# Syslog facility. Specify one of:
+# LOG_EMERG LOG_ALERT LOG_CRIT LOG_ERR LOG_WARNING LOG_NOTICE LOG_INFO LOG_DEBUG
+#
+#  MDsyslog	  => 'LOG_WARNING',
+
+# all dnsbl servers must have a record a config entry as follows:
+#
+# 'zone.name'	=> {
+#	accept	    => {	# a list of codes that are ok to add to tarpit from this DNSBL
+#	 	'127.0.0.2' => 'reason/comment',
+#		'127.0.0.3' => 'reason/comment',
+#	},
+#
+#	timeout	    => 30,	# default seconds to wait for dnsbl query to timeout
+#
+# The SpamCannibal sc_Blacklist.conf file has additional parameters that are
+# fully compatible with this file. See the SpamCannibal documentation and
+# sample files for further information.
+
+# working, sample file entries
+
+  'dnsbl.sorbs.net'	=> {	# see http://www.dnsbl.sorbs.net/using.html
+	accept	=> {	# list of codes for which we tarpit
+		'127.0.0.2'  =>	'open http proxie',
+		'127.0.0.3'  =>	'open socks proxie',
+		'127.0.0.4'  =>	'open proxy server',
+		'127.0.0.5'  =>	'open smtp relay',
+		'127.0.0.6'  =>	'spam supporting ISP',
+		'127.0.0.7'  =>	'open web - form mail servers',
+		'127.0.0.8'  =>	'blocked hosts',
+		'127.0.0.9'  =>	'zombie - hijacked netblock',
+		'127.0.0.10' =>	'dynamic address range',
+		'127.0.0.11' =>	'bad config -- MX or A records inaccurate',
+		'127.0.0.12' =>	'no mail ever sent from these domains',
+  	},
+  },
+
+  'dnsbl.njabl.org'	=> {	# see http://dnsbl.njabl.org/use.html
+	accept	=> {	# list of codes for which we tarpit
+		'127.0.0.2'  =>	'open relays',
+		'127.0.0.3'  =>	'dial-up/dynamic IP ranges',
+		'127.0.0.4'  =>	'spam sources',
+		'127.0.0.5'  =>	'multi-stage openrelay',
+		'127.0.0.8'  =>	'open web - form mail servers',
+		'127.0.0.9'  =>	'open proxy servers',
+	},
+  },
+
+  'relays.ordb.org'	=> {	# see http://www.ordb.org/faq/#usage_dns
+	accept	=> {
+		'127.0.0.2' => '',
+	},
+  },
+
+  'dsbl.org'	=>	{	# see http://dsbl.org/usage
+	accept	=> {
+		'127.0.0.2' => '',
+	},
+  },
+
+  'bl.spamcop.net'	=> {	# see http://spamcop.net/fom-serve/cache/291.html
+	accept	=> {
+		'127.0.0.2' => '',
+	},
+  },
+
+  'cbl.abuseat.org'	=> {	# see http://cbl.abuseat.org
+	accept  => {
+		'127.0.0.2' => '',
+	},
+  },
+
+  'sbl.spamhaus.org'	=> {	# see http://www.spamhaus.org
+	accept	=> {
+		'127.0.0.2' => '',
+	},
+  },
+
+  'dynablock.easynet.nl' => {	# see http://abuse.easynet.nl/dynablocker.html
+	accept => {
+		'127.0.0.2' => '',
+	},
+  },
+
+  'blackholes.easynet.nl' => {	# see http://abuse.easynet.nl/dynablocker.html
+	accept => {
+		'127.0.0.2' => '',
+	},
+  },
+
+  'proxies.blackholes.easynet.nl' => {	# see http://abuse.easynet.nl/dynablocker.html
+	accept => {
+		'127.0.0.2' => '',
+	},
+  },
+
+  'list.dsbl.org'       => {    # see http://dsbl.org
+	accept => {
+		'127.0.0.2' => '', 
+	},
+  },
+
+  'spews.dnsbl.net.au'	=> {	# see http://www.spews.org/
+	accept	=> {
+		'127.0.0.2' => '',
+	},
+  },
+};
