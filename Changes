@@ -1,5 +1,10 @@
 Revision history for Perl extension Net::DNSBL::MultiDaemon
 
+0.11  Fri Jun 18 13:07:14 PDT 2004
+	Change default SOA record to use TTL of 3600 
+	seconds for negative caching and set refresh, retry, to reasonable
+	values
+
 0.10  Sat Mar 20 14:34:51 PST 2004
 	change 'A' response for configured DNSBL's to always return
 	127.0.0.2 -- previous versions returned the 'A' record from

@@ -40,11 +40,12 @@ DESCRIPTION
     DNSBL entry of in-addr.arpa, IP's will be rejected that do not return
     some kind of valid reverse DNS lookup.
 
-    Return 'A' records are those returned by the responding DNSBL except:
+    Reject codes are as follows:
 
-      no reverse DNS        127.0.0.4
-      BLOCKED               127.0.0.5
-      Blocked by Country    127.0.0.6
+      blocked by configured DNSBL   127.0.0.2
+      no reverse DNS                127.0.0.4
+      BLOCKED (local blacklist)     127.0.0.5
+      Blocked by Country            127.0.0.6
 
 OPERATION
     The configuration file for multi_dnsbl contains optional IGNORE (always

@@ -20,7 +20,7 @@ $D_NOTME     = 0x10; # return received response not for me
 $D_ANSTOP    = 0x20; # clear run OK flag if ANSWER present
 $D_VERBOSE   = 0x40; # verbose debug statements to STDERR
 
-$VERSION = do { my @r = (q$Revision: 0.10 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
+$VERSION = do { my @r = (q$Revision: 0.11 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
 
 @EXPORT_OK = qw(
         run
@@ -523,9 +523,9 @@ sub run {
 	'root.localhost',
 	$now,
 	86400,
-	86401,
-	86402,
-	86403,
+	43200,
+	172800,
+	3600,		# cache negative TTL's for an hour
   ];
 
   my ($get,$put,$parse) = new Net::DNS::ToolKit::RR;
