@@ -1,5 +1,15 @@
 Revision history for Perl extension Net::DNSBL::MultiDaemon
 
+0.10  Sat Mar 20 14:34:51 PST 2004
+	change 'A' response for configured DNSBL's to always return
+	127.0.0.2 -- previous versions returned the 'A' record from
+	the responding DNSBL. This was inconsistent since different
+	DNSBL's don't necessarily use the same codes to specify their
+	rejection reason. Since the DNSBL configuration allows
+	parsing the individual codes for each zone, 127.0.0.2 allows
+	consistency in MultiDaemon's response and does not overlap
+	the return codes for in-addr.arpa, BLOCKED and BBC
+
 0.09  Fri Jan 16 15:09:32 PST 2004
 	updated Net::DNSBL::Utilities to 
 	print the totals at end of log file

@@ -20,7 +20,7 @@ $D_NOTME     = 0x10; # return received response not for me
 $D_ANSTOP    = 0x20; # clear run OK flag if ANSWER present
 $D_VERBOSE   = 0x40; # verbose debug statements to STDERR
 
-$VERSION = do { my @r = (q$Revision: 0.09 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
+$VERSION = do { my @r = (q$Revision: 0.10 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
 
 @EXPORT_OK = qw(
         run
@@ -129,11 +129,12 @@ reject specified countries by 2 character country code. By adding a DNSBL
 entry of B<in-addr.arpa>, IP's will be rejected that do not return some kind
 of valid reverse DNS lookup.
 
-Return 'A' records are those returned by the responding DNSBL except:
+Reject codes are as follows:
 
-  no reverse DNS	127.0.0.4
-  BLOCKED		127.0.0.5
-  Blocked by Country	127.0.0.6
+  blocked by configured DNSBL	127.0.0.2
+  no reverse DNS		127.0.0.4
+  BLOCKED (local blacklist) 	127.0.0.5
+  Blocked by Country		127.0.0.6
 
 =head1 OPERATION
 
@@ -681,7 +682,10 @@ undef $msg;
 	    if ($t == T_A) {
 	      while($answer = shift @rdata) {			# see if answer is on accept list
 		my $IP = inet_ntoa($answer);
-		last if grep($IP eq $_,keys %{$DNSBL->{"$blist[0]"}->{accept}});
+		if (grep($IP eq $_,keys %{$DNSBL->{"$blist[0]"}->{accept}})) {
+		  $answer = A1272;
+		  last;
+		}
 		undef $answer;
 	      } # end of rdata
 	    }
