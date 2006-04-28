@@ -15,7 +15,7 @@ use AutoLoader 'AUTOLOAD';
 require Exporter;
 @ISA = qw(Exporter);
 
-$VERSION = do { my @r = (q$Revision: 0.04 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
+$VERSION = do { my @r = (q$Revision: 0.05 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
 
 @EXPORT_OK = qw(
         s_response 
@@ -386,7 +386,7 @@ address is contained in the list.
   output:	Number of objects created
 		or undef on error
 
-The NAobject array is filled with NetAddr::IP object references.
+The NAobject array is filled with NetAddr::IP::Lite object references.
 
 =cut
 
@@ -396,7 +396,7 @@ sub list2NetAddr {
 	unless ref $inref eq 'ARRAY'
 	&& ref $outref eq 'ARRAY';
   unless ($SKIP_NetAddrIP) {
-    require NetAddr::IP;
+    require NetAddr::IP::Lite;
     $SKIP_NetAddrIP = 1;
   }
   @$outref = ();
@@ -406,19 +406,19 @@ sub list2NetAddr {
     $IP =~ s/\s//g;
 	# 11.22.33.44
     if ($IP =~ /^\d+\.\d+\.\d+\.\d+$/o) {
-      push @$outref, NetAddr::IP->new($IP), 0;
+      push @$outref, NetAddr::IP::Lite->new($IP), 0;
     }
 	# 11.22.33.44 - 11.22.33.49
     elsif ($IP =~ /^(\d+\.\d+\.\d+\.\d+)\s*\-\s*(\d+\.\d+\.\d+\.\d+)$/o) {
-      push @$outref, NetAddr::IP->new($1), NetAddr::IP->new($2);
+      push @$outref, NetAddr::IP::Lite->new($1), NetAddr::IP::Lite->new($2);
     }
 	# 11.22.33.44/63
     elsif ($IP =~ m|^\d+\.\d+\.\d+\.\d+/\d+$|) {
-      push @$outref, NetAddr::IP->new($IP), 0;
+      push @$outref, NetAddr::IP::Lite->new($IP), 0;
     }
 	# 11.22.33.44/255.255.255.224
-    elsif ($IP =~ m|^\d+\.\d+\.\d+\.\d+/\d+\.\d+\.\d+\.\d+$|o) {
-      push @$outref, NetAddr::IP->new($IP), 0;
+    elsif ($IP =~ m|^(\d+\.\d+\.\d+\.\d+)/(\d+\.\d+\.\d+\.\d+)$|o) {
+      push @$outref, NetAddr::IP::Lite->new($1,$2), 0;
     }
 # ignore un-matched IP patterns
   }
@@ -439,7 +439,7 @@ sub matchNetAddr {
   my($ip,$naref) = @_;
   return 0 unless $ip && $ip =~ /\d+\.\d+\.\d+\.\d+/;
   $ip =~ s/\s//g;
-  $ip = new NetAddr::IP($ip);
+  $ip = new NetAddr::IP::Lite($ip);
   my $i;
   for($i=0; $i <= $#{$naref}; $i += 2) {
     my $beg = $naref->[$i];

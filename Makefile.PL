@@ -28,7 +28,7 @@ WriteMakefile(
     'PREREQ_PM'		=> {	Net::DNS::Codes		=> 0.08,
 				Net::DNS::ToolKit	=> 0.24,
 				Unix::Syslog		=> 0.97,
-				NetAddr::IP		=> 0.35,
+				NetAddr::IP::Lite	=> 0.02,
 				Geo::IP::PurePerl	=> 1.10,
 			},
     'clean'		=> { FILES    => "*~ tmp*"},

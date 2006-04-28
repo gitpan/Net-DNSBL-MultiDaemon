@@ -20,3 +20,4 @@ t/run_timer.t
 t/s_response.t
 t/statscount.t
 local/test.conf
+META.yml                                 Module meta-data (added by MakeMaker)
