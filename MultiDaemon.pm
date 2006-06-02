@@ -20,7 +20,7 @@ $D_NOTME     = 0x10; # return received response not for me
 $D_ANSTOP    = 0x20; # clear run OK flag if ANSWER present
 $D_VERBOSE   = 0x40; # verbose debug statements to STDERR
 
-$VERSION = do { my @r = (q$Revision: 0.16 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
+$VERSION = do { my @r = (q$Revision: 0.17 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
 
 @EXPORT_OK = qw(
         run
@@ -89,7 +89,7 @@ use Net::DNSBL::Utilities qw(
 
 =head1 NAME
 
-Net::DNSBL::MultiDaemon - multiple DNSBL emulator
+Net::DNSBL::MultiDaemon - multi DNSBL prioritization
 
 =head1 SYNOPSIS
 
@@ -423,9 +423,9 @@ A pointer to a statistics collection array of the form:
   };
 
 Initialize this array with
-L<cntinit($DNSBL,$cp)|Net::DNSBL::Utilities/cntinit>, then 
-L<list2hash($BBC,$cp)|Net::DNSBL::Utilities/list2hash>, then
-L<statinit($Sfile,$cp)|Net::DNSBL::Utilities/statinit>, below.
+cntinit($DNSBL,$cp) L<Net::DNSBL::Utilities>/cntinit, then 
+list2hash($BBC,$cp) L<Net::DNSBL::Utilities>/list2hash, then
+statinit($Sfile,$cp) L<Net::DNSBL::Utilities>/statinit, below.
 
 =item * $Run
 
@@ -445,7 +445,7 @@ If $Sfile is undefined, then the time stamp need not be defined
 =item * $StatTimestamp
 
 Normally the value returned by
-L<statinit($Sfile,$cp)|Net::DNSBL::Utilities/statinit>, below.
+statinit($Sfile,$cp) L<Net::DNSBL::Utilities>/statinit, below.
 
 =back
 
