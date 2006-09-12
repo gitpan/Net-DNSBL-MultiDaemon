@@ -74,7 +74,7 @@ sub next_sec {
 }
 
 my $dir = './tmp';
-mkdir $dir;
+mkdir $dir,0755;
 
 sub expect {
   my $x = shift;

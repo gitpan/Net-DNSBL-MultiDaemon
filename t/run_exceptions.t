@@ -73,7 +73,7 @@ sub next_sec {
 }
 
 my $dir = './tmp';
-mkdir $dir;
+mkdir $dir,0755;
 
 my $config = './local/test.conf';
 my $sfile = $dir .'/stats.tst';

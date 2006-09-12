@@ -74,7 +74,7 @@ sub next_sec {
 }
 
 my $dir = './tmp';
-mkdir $dir;
+mkdir $dir,0755;
 
 sub expect {
   my $x = shift;
@@ -486,35 +486,50 @@ print $@, "\nnot "
 &ok;
 
 ## test 17	read message back in 'run'
-$DNSBL->{BBC} = ['US'];
+require Geo::IP::PurePerl;
 
 eval {
+  my $x = new Geo::IP::PurePerl;
+};
+
+if ($@) {
+  print "ok $test # Skipped, failed to load Geo::IP::PurePerl\n";
+  ++$test;
+  print "ok $test # Skipped\n";
+  ++$test;
+  print "ok $test # Skipped\n";
+  ++$test;
+  print STDERR " WARNING! Geo::IP::PurePerl database appears to be missing\n";
+} else {
+  $DNSBL->{BBC} = ['US'];
+
+  eval {
 	local $SIG{ALRM} = sub {die "blocked, timeout"};
 	alarm 3;
 	$runval = run($blackz,$L,$R,$DNSBL,\%STATS,\$run,$sfile,$statime,$D_CLRRUN);
 	alarm 0;
-};
+  };
 
-print $@, "\nnot "
+  print $@, "\nnot "
 	if $@;
-&ok;
+  &ok;
 
-$msg = undef;
-$err = eval {
+  $msg = undef;
+  $err = eval {
 	local $SIG{ALRM} = sub {die "blocked, timeout"};
 	my $rv;
 	alarm 2;
 	recv($R,$msg,512,0) or
 		die "no message received";
 	alarm 0;
-};
-## test 18
-print $@, "\nnot "
+  };
+  ## test 18
+  print $@, "\nnot "
 	if $@;
-&ok;
+  &ok;
 
 ## test 19	check expected answer
-$expectxt = q|
+  $expectxt = q|
   0     :  0011_0000  0x30   48  0  
   1     :  0011_1001  0x39   57  9  
   2     :  1000_0000  0x80  128    
@@ -612,7 +627,8 @@ $expectxt = q|
 |;
 #print_head(\$msg);
 #print_buf(\$msg);
-chk_exp(\$msg,\$expectxt);
+  chk_exp(\$msg,\$expectxt);
 
-close $L;
-close $R;
+  close $L;
+  close $R;
+};
