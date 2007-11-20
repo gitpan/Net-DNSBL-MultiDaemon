@@ -6,16 +6,16 @@ use strict;
 
 use vars qw(
 	$VERSION @ISA @EXPORT_OK *UDP 
-	$A1271 $A1272 $A1273 $A1274 $A1275 $A1276
-	$SKIP_POSIX $SKIP_NetAddrIP
+	$A1271 $A1272 $A1273 $A1274 $A1275 $A1276 $A1277
+	$SKIP_POSIX $SKIP_NetAddrIP $AuthBit $RABit
 );
 $A1271 = $A1272 = $A1273 = $A1274 = $A1275 = 0;
-$SKIP_POSIX = $SKIP_NetAddrIP = 0;
+$AuthBit = $SKIP_POSIX = $SKIP_NetAddrIP = 0;
 use AutoLoader 'AUTOLOAD';
 require Exporter;
 @ISA = qw(Exporter);
 
-$VERSION = do { my @r = (q$Revision: 0.05 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
+$VERSION = do { my @r = (q$Revision: 0.07 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
 
 @EXPORT_OK = qw(
         s_response 
@@ -35,7 +35,10 @@ $VERSION = do { my @r = (q$Revision: 0.05 $ =~ /\d+/g); sprintf "%d."."%02d" x $
 	A1274
 	A1275
 	A1276
+	A1277
 	list_countries
+	setAUTH
+	setRA
 );
 
 use Config;
@@ -44,6 +47,8 @@ use Net::DNS::Codes qw(
 	QR
 	NXDOMAIN
 	C_IN
+	AA
+	RA
 );
 use Net::DNS::ToolKit 0.16 qw(
 	newhead
@@ -79,12 +84,15 @@ Net::DNSBL::Utilities - functions for DNSBL daemons
 	list2NetAddr
 	matchNetAddr
 	list_countries
+	setAUTH
+	setRA
         A1271
         A1272
         A1273
         A1274
         A1275
 	A1276
+	A1277
   );
 
   s_response($mp,$resp,$id,$qdcount,$ancount,$nscount,$arcount);
@@ -99,12 +107,15 @@ Net::DNSBL::Utilities - functions for DNSBL daemons
   $rv=list2NetAddr(\@inlist,\@NAobject);
   $rv = matchNetAddr($ip,\@NAobject);
   ($countries,$code3s,$names) = list_countries;
+  setAUTH(true/false);
+  setRA(true/false);
   $netaddr = A1271;
   $netaddr = A1272;
   $netaddr = A1273;
   $netaddr = A1274;
   $netaddr = A1275;
-  $netaddr = A1276
+  $netaddr = A1276;
+  $netaddr = A1277;
 
 =head1 DESCRIPTION
 
@@ -130,7 +141,7 @@ sub s_response {
   my $newhead;
   my $off = newhead(\$newhead,
 	$id,
-	BITS_QUERY | QR | $resp,
+	BITS_QUERY | $AuthBit | QR | $resp,
 	$qdcount,$ancount,$nscount,$arcount,
   );
   substr($$mp,0,$off) = $newhead;
@@ -154,7 +165,7 @@ sub not_found {
   my($put,$name,$type,$id,$mp,$srp) = @_;
   my $off = newhead($mp,
 	$id,
-	BITS_QUERY | QR | NXDOMAIN,
+	BITS_QUERY | $AuthBit | QR | NXDOMAIN,
 	1,0,1,0,
   );
   my @dnptrs;
@@ -498,6 +509,40 @@ sub list_countries {
   return ($countries,$code3s,$names);
 }
 
+=item * setAUTH(true/false);
+
+Set the Authoratitive Answer bit true or false for all replys
+
+  input:	true/false
+  returns:	nothing
+
+=cut
+
+sub setAUTH {
+  if ($_[0]) {
+    $AuthBit = AA();
+  } else {
+    $AuthBit = 0;
+  }
+}
+
+=item * setRA(true/false);
+
+Set the Recursion Allowed bit true or false for all replys
+
+  input:	true/false
+  returns:	nothing
+
+=cut
+
+sub setRA {
+  if ($_[0]) {
+    $RABit = RA();
+  } else {
+    $RABit = 0;
+  }
+}
+
 =item * $netaddr = A127x
 
 Functions A1271, A1272, A1273, etc..., return the packed network address for
@@ -516,7 +561,7 @@ sub _loadSocket {
   $A1274 = inet_aton('127.0.0.4');
   $A1275 = inet_aton('127.0.0.5');
   $A1276 = inet_aton('127.0.0.6');
-
+  $A1277 = inet_aton('127.0.0.7');
 }
 
 sub A1271 {
@@ -549,6 +594,11 @@ sub A1276 {
   $A1276;
 }
 
+sub A1277 {
+  _loadSocket unless $A1277;
+  $A1277;
+}
+
 =head1 DEPENDENCIES
 
 	Net::DNS::Codes
@@ -568,6 +618,15 @@ sub A1276 {
 	list2NetAddr
 	matchNetAddr
 	list_countries
+	setAUTH
+	setRA
+	A1271
+	A1272
+	A1273
+	A1274
+	A1275
+	A1276
+	A1277
 
 =head1 AUTHOR
 
@@ -575,7 +634,7 @@ Michael Robinton, michael@bizsystems.com
 
 =head1 COPYRIGHT
 
-Copyright 2003, Michael Robinton & BizSystems
+Copyright 2003 - 2007, Michael Robinton & BizSystems
 This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
 the Free Software Foundation; either version 2 of the License, or 

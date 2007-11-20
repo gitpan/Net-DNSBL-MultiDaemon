@@ -1,5 +1,24 @@
 Revision history for Perl extension Net::DNSBL::MultiDaemon
 
+0.22  Sat Nov 17 16:43:10 PST 2007
+	add sub A1277 to Utilities v0.07
+
+	add GENERIC PTR rejection capability
+	see full description of configuration
+	in multi_dnsbl.conf.sample
+
+0.21  not released
+	set authority in answers to mirror that of answer from 
+	query responder.
+
+	add Recursion Allowed capability
+
+0.20  not released
+	add Authoratative Answer capability
+
+0.19  Fri Oct 20 17:45:55 PDT 2006
+	add 24 hour short term averaging for DNSBL prioritization
+
 0.18  Mon Sep 11 18:29:15 PDT 2006
 	'mkdir' updates for perl 5.0503 compatibility
 

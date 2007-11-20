@@ -8,7 +8,9 @@ rc.multi_dnsbl
 multi_dnsbl.conf.sample
 lib/Net/DNSBL/Utilities.pm
 scripts/list_countries.pl
+t/average.t
 t/bl_lookup.t
+t/by_answer.t
 t/in-addr.arpa-timeout.t
 t/not_found.t
 t/open_udpNB.t
@@ -18,6 +20,7 @@ t/run_goodrcv.t
 t/run_local.t
 t/run_timer.t
 t/s_response.t
+t/setAUTH.t
 t/statscount.t
 local/test.conf
 META.yml                                 Module meta-data (added by MakeMaker)

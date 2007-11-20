@@ -20,7 +20,7 @@ $D_NOTME     = 0x10; # return received response not for me
 $D_ANSTOP    = 0x20; # clear run OK flag if ANSWER present
 $D_VERBOSE   = 0x40; # verbose debug statements to STDERR
 
-$VERSION = do { my @r = (q$Revision: 0.18 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
+$VERSION = do { my @r = (q$Revision: 0.22 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
 
 @EXPORT_OK = qw(
         run
@@ -69,7 +69,7 @@ use Net::DNS::ToolKit::RR;
 #	print_buf
 #);
 
-use Net::DNSBL::Utilities qw(
+use Net::DNSBL::Utilities 0.07 qw(
         s_response 
         not_found  
 	write_stats
@@ -79,8 +79,11 @@ use Net::DNSBL::Utilities qw(
 	A1274
 	A1275
 	A1276
+	A1277
 	list2NetAddr
 	matchNetAddr
+	setAUTH
+	setRA
 );
 
 # target for queries about DNSBL zones, create once per session
@@ -128,7 +131,8 @@ In addition to optimizing DNSBL interrogation, B<multi_dnsbl> may be
 configured to locally accept or reject specified IP's, IP ranges and to
 reject specified countries by 2 character country code. By adding a DNSBL
 entry of B<in-addr.arpa>, IP's will be rejected that do not return some kind
-of valid reverse DNS lookup.
+of valid reverse DNS lookup. In addition, IP's can be rejected that have a
+PTR record that matchs a configurable GENERIC 'regexp' set.
 
 Reject codes are as follows:
 
@@ -136,6 +140,7 @@ Reject codes are as follows:
   no reverse DNS		127.0.0.4
   BLOCKED (local blacklist) 	127.0.0.5
   Blocked by Country		127.0.0.6
+  Blocked GENERIC		127.0.0.7
 
 =head1 OPERATION
 
@@ -370,6 +375,9 @@ A pointer to the configuration hash of the form:
 	'127.0.0.0/8',  # ignore all test entries and localhost
 	],
 
+    # Authoratative answers
+	'AUTH'	=> 0,
+
     # Always reject these addresses
 	'BLOCK'	=> [	# OPTIONAL
 	   # same format as above
@@ -451,9 +459,54 @@ statinit($Sfile,$cp) L<Net::DNSBL::Utilities>/statinit, below.
 
 =cut
 
+my %AVGs	= ();	# averages
+my %CNTs	= ();	# current counts
+my $tick	= 0;	# second ticker
+my $interval	= 300;	# averaging interval
+my $bucket	= 24 * 60 * 60;	# 24 hours for now...
+my $weight	= 5;	# weight new stuff higher than old stuff
+my ($now, $next);
+
+sub average {
+  my $STATs = shift;
+  my $multiplier = $bucket / ($bucket + (($now + $interval - $next) * $weight));
+  $next = $now + $interval;		# next average event
+  foreach (keys %$STATs) {
+    next unless $_ =~ /\./;		# only real domains
+    next unless exists $CNTs{"$_"};
+    $AVGs{"$_"} = ($AVGs{"$_"} + ($weight * $CNTs{"$_"})) * $multiplier;
+    $CNTs{"$_"} = 0;
+  }
+}
+
+sub by_average {
+  my($STATs,$a,$b) = @_;;
+  if (exists $AVGs{"$b"} && exists $AVGs{"$a"}) {
+    return ($AVGs{"$b"} <=> $AVGs{"$a"})
+			||
+	($STATs->{"$b"} <=> $STATs->{"$a"});
+  }
+  elsif (exists $AVGs{"$b"}) {
+    return 1;
+  }
+  elsif (exists $AVGs{"$a"}) {
+    return -1;
+  } else {
+    return ($STATs->{"$b"} <=> $STATs->{"$a"});
+  }
+}
+
+# for testing
+# set now and next, return pointers to internal averaging arrays
+#
+sub set_nownext {
+  ($now,$next) = @_;
+  return($interval,\%AVGs,\%CNTs);
+}
+
 sub run {
   my ($BLzone,$L,$R,$DNSBL,$STATs,$Run,$Sfile,$StatStamp,$DEBUG) = @_;
-
+#open(Tmp,'>/tmp/multidnsbl.log');
   local *_alarm = sub {return $DNSBL->{"$_[0]"}->{timeout} || 30};
 
   $BLzone = lc $BLzone;
@@ -495,10 +548,33 @@ sub run {
     $BBC = new Geo::IP::PurePerl;
   }
 
+#select Tmp;
+#$| = 1;
+#print Tmp "running $$\n";
+
+# set up GENERIC PTR tests
+  my($iptr,$regexptr);
+  if (	exists $DNSBL->{GENERIC} &&
+	ref $DNSBL->{GENERIC} eq 'HASH' &&
+	($regexptr = $DNSBL->{GENERIC}->{regexp}) &&
+	ref $regexptr eq 'ARRAY' &&
+	@$regexptr > 0 ) {
+#print Tmp "regexptr setup, @$regexptr\n";
+    unless (	$DNSBL->{GENERIC}->{ignore} &&
+		'ARRAY' eq ref ($iptr = $DNSBL->{GENERIC}->{ignore}) &&
+		@$iptr > 0 ) {
+      undef $iptr;
+    }
+  } else {
+#print Tmp "regexptr FAILED\n";
+    undef $regexptr;
+  }
+
   my $filenoL = fileno($L);
   my $filenoR = fileno($R);
 
-  my $now = time;
+  $now = time;
+  $next = $now + $interval;
   my $newstat = 0;			# new statistics flag
   my $refresh = $now + $$Run;		# update statistics "then"
 
@@ -508,6 +584,8 @@ sub run {
 	unlink $Sfile;
 	foreach(keys %$STATs) {
 	  $STATs->{"$_"} = 0;
+	  %AVGs = ();
+	  %CNTs = ();
 	}
 	$StatStamp = statinit($Sfile,$STATs);
 	syslog($LogLevel,"received USR2, clear stats\n")
@@ -561,6 +639,8 @@ sub run {
 	  last;
 	}
 	$comment = 'no bl';
+	setAUTH(0);						# clear authority
+	setRA($rd);
 	if ($opcode != QUERY) {
 	  s_response(\$msg,NOTIMP,$id,1,0,0,0);
 	  $comment = 'not implemented';
@@ -615,11 +695,14 @@ sub run {
 		$comment = "block $cc";
 	      }
 	      else {
+#test here for GENERIC
 		@blist = ();
-		foreach(sort {$STATs->{"$b"} <=> $STATs->{"$a"}} keys %$STATs) {
+		foreach(sort { by_average($STATs,$a,$b) } keys %$STATs) {
 		  next unless $_ =~ /\./;				# drop passed,white,black,bbc entries
 		  push @blist, $_;
 		}
+		push @blist, 'genericPTR' if $regexptr;
+
 		bl_lookup($put,\$msg,\%remoteThreads,$l_Sin,_alarm($blist[0]),$id,$rip,$type,$zone,@blist);
 		send($R,$msg,0,$R_Sin);				# udp may not block
 		print STDERR $blist[0] if $DEBUG & $D_VERBOSE;
@@ -670,11 +753,13 @@ sub run {
 
 	($off,$name,$t,$class) = $get->Question(\$msg,$off);
 
-	my $answer;
+	my($answer,@generic);
 	if ($ancount && $rcode == &NOERROR) {
 	  $name =~ /^(\d+\.\d+\.\d+\.\d+)\.(.+)$/;
 	  my $z = lc $2;
-	  unless (  $z eq lc $blist[0] &&			# not my question
+	  $z = ($z eq lc $blist[0]) || ($z eq 'in-addr.arpa' && $blist[0] eq 'genericPTR')
+		? 1 : 0;
+	  unless (  $z &&					# not my question
 	  	    $1 eq $rip &&				# not my question
 		    ($t == T_A || $t == T_PTR) &&		# not my question
 		    $class == C_IN) {				# not my question
@@ -682,6 +767,9 @@ sub run {
 	    last;
 	  }
 	  undef $answer;
+
+	setAUTH($aa);						# mirror out authority state
+	setRA($rd);
 
 	ANSWER:
 	  foreach(0..$ancount -1) {
@@ -697,6 +785,10 @@ sub run {
 		undef $answer;
 	      } # end of rdata
 	    }
+	    elsif ($t == T_PTR && $blist[0] eq 'genericPTR') {	# duplicates in-addr.arpa lookup, inefficient, but does not happen often
+#print Tmp "add $rdata[0]\n";
+	      push @generic, $rdata[0];
+	    }
 	  } # end of each ANSWER
 	}
 	elsif ($t == T_PTR && ($rcode == NXDOMAIN || $rcode == SERVFAIL)) { # no reverse lookup
@@ -705,9 +797,23 @@ sub run {
 	  $nscount = $arcount = 0;
 	}
 
+	if (@generic) {
+	  my @names;
+	  foreach my $g (@generic) {
+	    last if $iptr && grep($g =~ /$_/i, @$iptr);
+	    push @names, $g if $g && ! grep($g =~ /$_/i, @$regexptr);
+	  }
+	  $answer = A1277 unless @names;
+	}
 	if ($answer) {						# if valid answer
 	  delete $remoteThreads{$id};
 	  $STATs->{"$blist[0]"} += 1;				# bump statistics count
+	  if (exists $CNTs{"$blist[0]"}) {
+	    $CNTs{"$blist[0]"} += 1;
+	  } else {
+	    $CNTs{"$blist[0]"} = 1;
+	    $AVGs{"$blist[0]"} = 1;
+	  }
 	  $newstat = 1;						# notify refresh that update may be needed
 	  my($nmsg,$noff,@dnptrs) =				# make proto answer
 		_ansrbak($put,$id,$nscount + $arcount +1,$rip,$zone,$type,$ttl,$answer);
@@ -776,6 +882,9 @@ sub run {
 ##################### TIMEOUT, do busywork #######################
     else {							# must be timeout
       $now = time;						# check various alarm status
+      unless ($now < $next) {
+	average($STATs);
+      }
       foreach $id (keys %remoteThreads) {
 	next unless $remoteThreads{$id}->{expire} < $now;	# expired??
 
@@ -792,6 +901,12 @@ sub run {
 	  delete $remoteThreads{$id};
 	  $deadDNSBL{"$blist[0]"} = 0;				# reset timeout (this one never expires)
 	  $STATs->{"$blist[0]"} += 1;				# bump statistics count
+	  if (exists $CNTs{"$blist[0]"}) {
+	    $CNTs{"$blist[0]"} += 1;
+	  } else {
+	    $CNTs{"$blist[0]"} = 1;
+	    $AVGs{"$blist[0]"} = 1;
+	  }
 	  $newstat = 1;						# notify refresh that update may be needed
 	  ($msg) = _ansrbak($put,$id,1,$rip,$zone,$type,3600,A1274);
 	  send($L,$msg,0,$l_Sin);
@@ -889,10 +1004,14 @@ sub bl_lookup {
 	BITS_QUERY | RD,
 	1,0,0,0,
   );
-  my $Qtype = ($blist[0] eq 'in-addr.arpa')
+  my $blist = ($blist[0] eq 'genericPTR')
+	? 'in-addr.arpa'
+	: $blist[0];
+
+  my $Qtype = ($blist eq 'in-addr.arpa')
 	? &T_PTR
 	: &T_A;
-  $put->Question($mp,$off,$rip .'.'. $blist[0],$Qtype,C_IN);
+  $put->Question($mp,$off,$rip .'.'. $blist,$Qtype,C_IN);
   $rtp->{$id} = {
 	args	=> [$sinaddr,$rip,$type,$zone,@blist],
 	expire	=> time + $alarm,
