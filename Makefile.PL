@@ -5,6 +5,19 @@ my $pkg = 'Net::DNSBL::MultiDaemon';
 $pkg =~ /[^:]+$/;
 my $module = $& .'.pm';
 
+WriteMakefile(
+    'NAME'		=> $pkg,
+    'VERSION_FROM'	=> $module, # finds $VERSION
+    'PREREQ_PM'		=> {	Net::DNS::Codes		=> 0.09,
+				Net::DNS::ToolKit	=> 0.41,
+				Unix::Syslog		=> 0.97,
+				NetAddr::IP::Lite	=> 0.02,
+				Geo::IP::PurePerl	=> 1.10,
+			},
+    'clean'		=> { FILES    => "*~ tmp*"},
+    'dist'		=> {COMPRESS=>'gzip', SUFFIX=>'gz'}
+);
+
 eval {
 	require Net::DNS::ToolKit;
 };
@@ -16,24 +29,12 @@ if (@_) {
     print 'found nameserver ',&Net::DNS::ToolKit::inet_ntoa($_),"\n";
   }
 } else {
-  die "resolver not configured, Net::DNSBLS::MultiDaemon will not run\n";
+  print STDERR "resolver not configured, Net::DNSBLS::MultiDaemon will not run\n";
+  exit 0;
 }
 
 # See lib/ExtUtils/MakeMaker.pm for details of how to influence
 # the contents of the Makefile that is written.
-
-WriteMakefile(
-    'NAME'		=> $pkg,
-    'VERSION_FROM'	=> $module, # finds $VERSION
-    'PREREQ_PM'		=> {	Net::DNS::Codes		=> 0.08,
-				Net::DNS::ToolKit	=> 0.24,
-				Unix::Syslog		=> 0.97,
-				NetAddr::IP::Lite	=> 0.02,
-				Geo::IP::PurePerl	=> 1.10,
-			},
-    'clean'		=> { FILES    => "*~ tmp*"},
-    'dist'		=> {COMPRESS=>'gzip', SUFFIX=>'gz'}
-);
 
 sub MY::top_targets {
   package MY;

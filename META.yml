@@ -1,15 +1,17 @@
-# http://module-build.sourceforge.net/META-spec.html
-#XXXXXXX This is a prototype!!!  It will change in the future!!! XXXXX#
-name:         Net-DNSBL-MultiDaemon
-version:      0.22
-version_from: MultiDaemon.pm
-installdirs:  site
-requires:
+--- #YAML:1.0
+name:                Net-DNSBL-MultiDaemon
+version:             0.23
+abstract:            ~
+license:             ~
+author:              ~
+generated_by:        ExtUtils::MakeMaker version 6.42
+distribution_type:   module
+requires:     
     Geo::IP::PurePerl:             1.1
-    Net::DNS::Codes:               0.08
-    Net::DNS::ToolKit:             0.24
+    Net::DNS::Codes:               0.09
+    Net::DNS::ToolKit:             0.41
     NetAddr::IP::Lite:             0.02
     Unix::Syslog:                  0.97
-
-distribution_type: module
-generated_by: ExtUtils::MakeMaker version 6.30
+meta-spec:
+    url:     http://module-build.sourceforge.net/META-spec-v1.3.html
+    version: 1.3
