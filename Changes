@@ -1,5 +1,8 @@
 Revision history for Perl extension Net::DNSBL::MultiDaemon
 
+0.24  Sat Nov  1 17:15:11 PDT 2008
+	adjust prerequsites list
+
 0.23  Wed Oct 15 15:03:50 PDT 2008
 	require Net::DNS::ToolKit version 0.41 or higher
 
