@@ -15,7 +15,7 @@ use AutoLoader 'AUTOLOAD';
 require Exporter;
 @ISA = qw(Exporter);
 
-$VERSION = do { my @r = (q$Revision: 0.07 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
+$VERSION = do { my @r = (q$Revision: 0.08 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
 
 @EXPORT_OK = qw(
         s_response 
@@ -71,7 +71,7 @@ Net::DNSBL::Utilities - functions for DNSBL daemons
 
 =head1 SYNOPSIS
 
-  use Net::DNSBL::MultiDaemon qw(
+  use Net::DNSBL::Utilities qw(
         s_response 
         not_found  
         write_stats

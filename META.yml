@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:                Net-DNSBL-MultiDaemon
-version:             0.24
+version:             0.25
 abstract:            ~
 license:             ~
 author:              ~
@@ -10,7 +10,8 @@ requires:
     Geo::IP::PurePerl:             1.1
     Net::DNS::Codes:               0.09
     Net::DNS::ToolKit:             0.41
-    NetAddr::IP:                   4.014
+    NetAddr::IP:                   4.015
+    Test::More:                    0
     Unix::Syslog:                  0.97
 meta-spec:
     url:     http://module-build.sourceforge.net/META-spec-v1.3.html

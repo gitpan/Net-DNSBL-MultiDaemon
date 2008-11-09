@@ -20,7 +20,7 @@ $D_NOTME     = 0x10; # return received response not for me
 $D_ANSTOP    = 0x20; # clear run OK flag if ANSWER present
 $D_VERBOSE   = 0x40; # verbose debug statements to STDERR
 
-$VERSION = do { my @r = (q$Revision: 0.24 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
+$VERSION = do { my @r = (q$Revision: 0.25 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
 
 @EXPORT_OK = qw(
         run
@@ -393,6 +393,8 @@ A pointer to the configuration hash of the form:
 
     # RBL zones as follows: OPTIONAL
 	'domain.name' => {
+	    acceptany	=> 'comment - treat any response as valid',
+    # or
 	    accept	=> {
 		'127.0.0.2' => 'comment',
 		'127.0.0.3' => 'comment',
@@ -776,11 +778,15 @@ sub run {
 	    ($off,$name,$t,$class,$ttl,$rdl,@rdata) = $get->next(\$msg,$off);
 	    next if $answer;					# throw away unneeded answers
 	    if ($t == T_A) {
+	      if (exists $DNSBL->{"$blist[0]"}->{acceptany}) {
+		$answer = A1272;
+		last ANSWER;
+	      }
 	      while($answer = shift @rdata) {			# see if answer is on accept list
 		my $IP = inet_ntoa($answer);
 		if (grep($IP eq $_,keys %{$DNSBL->{"$blist[0]"}->{accept}})) {
 		  $answer = A1272;
-		  last;
+		  last ANSWER;
 		}
 		undef $answer;
 	      } # end of rdata

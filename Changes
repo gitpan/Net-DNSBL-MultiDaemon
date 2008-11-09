@@ -1,5 +1,10 @@
 Revision history for Perl extension Net::DNSBL::MultiDaemon
 
+0.25  Sun Nov  9 15:01:48 PST 2008
+	correct documentation in Utilities v0.08
+	add 'acceptany' key to DNSBL codes to allow
+	any A record returned to be considered valid.
+
 0.24  Sat Nov  1 17:15:11 PDT 2008
 	adjust prerequsites list
 

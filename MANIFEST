@@ -8,6 +8,7 @@ rc.multi_dnsbl
 multi_dnsbl.conf.sample
 lib/Net/DNSBL/Utilities.pm
 scripts/list_countries.pl
+t/_find_resolver.t
 t/average.t
 t/bl_lookup.t
 t/by_answer.t

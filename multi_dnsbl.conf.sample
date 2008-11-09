@@ -207,6 +207,8 @@ my $DNSBL = {
 # all dnsbl servers must have a record a config entry as follows:
 #
 # 'zone.name'	=> {
+#	acceptany   => 'comment - accepts any DNSBL return value',
+#  # or
 #	accept	    => {	# a list of codes that are ok to add to tarpit from this DNSBL
 #	 	'127.0.0.2' => 'reason',
 #		'127.0.0.3' => 'reason',

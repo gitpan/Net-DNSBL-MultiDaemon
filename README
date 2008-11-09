@@ -280,6 +280,8 @@ PERL MODULE DESCRIPTION
 
               # RBL zones as follows: OPTIONAL
                   'domain.name' => {
+                      acceptany   => 'comment - treat any response as valid',
+              # or
                       accept      => {
                           '127.0.0.2' => 'comment',
                           '127.0.0.3' => 'comment',

@@ -8,30 +8,32 @@ my $module = $& .'.pm';
 WriteMakefile(
     'NAME'		=> $pkg,
     'VERSION_FROM'	=> $module, # finds $VERSION
-    'PREREQ_PM'		=> {	Net::DNS::Codes		=> 0.09,
+    'PREREQ_PM'		=> {
+				Test::More		=> 0,
+				Net::DNS::Codes		=> 0.09,
 				Net::DNS::ToolKit	=> 0.41,
 				Unix::Syslog		=> 0.97,
-				NetAddr::IP		=> 4.014,
+				NetAddr::IP		=> 4.015,
 				Geo::IP::PurePerl	=> 1.10,
 			},
     'clean'		=> { FILES    => "*~ tmp*"},
     'dist'		=> {COMPRESS=>'gzip', SUFFIX=>'gz'}
 );
 
-eval {
-	require Net::DNS::ToolKit;
-};
-die "prerequisite Net::DNS::ToolKit not found\n"
-	if $@;
-@_ = &Net::DNS::ToolKit::get_ns();
-if (@_) {
-  foreach(@_) {
-    print 'found nameserver ',&Net::DNS::ToolKit::inet_ntoa($_),"\n";
-  }
-} else {
-  print STDERR "resolver not configured, Net::DNSBLS::MultiDaemon will not run\n";
-  exit 0;
-}
+#eval {
+#	require Net::DNS::ToolKit;
+#};
+#die "prerequisite Net::DNS::ToolKit not found\n"
+#	if $@;
+#@_ = &Net::DNS::ToolKit::get_ns();
+#if (@_) {
+#  foreach(@_) {
+#    print 'found nameserver ',&Net::DNS::ToolKit::inet_ntoa($_),"\n";
+#  }
+#} else {
+#  print STDERR "resolver not configured, Net::DNSBLS::MultiDaemon will not run\n";
+#  exit 0;
+#}
 
 # See lib/ExtUtils/MakeMaker.pm for details of how to influence
 # the contents of the Makefile that is written.
