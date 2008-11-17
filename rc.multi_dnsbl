@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 #
 # rc.multi_dnsbl
-# version 1.05, 8-30-04
+# version 1.06, 11-16-08
 #
 #
 #################################################################
@@ -40,7 +40,7 @@ use Net::DNSBL::Utilities qw(
 	statinit
 	cntinit
 	list2hash
-	DO
+	doINCLUDE
 	open_udpNB
 );
 my $daemon = 0;
@@ -107,7 +107,7 @@ $0 = $me;
 
 while (1) {
 
-  $DNSBL = DO($config);
+  $DNSBL = doINCLUDE($config);
   usage('could not load config file')
 	unless $DNSBL;
   usage('corrupted config file')

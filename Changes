@@ -1,5 +1,14 @@
 Revision history for Perl extension Net::DNSBL::MultiDaemon
 
+0.26  Sun Nov 16 15:47:51 PST 2008
+	replace 'sub DO' with File::SafeDO in Utilities v0.09
+	to support INCLUDE keys in the configuration file
+
+  NOTE: rc.multi_dnsbl has been updated to use doINCLUDE
+	if you are using an old version of rc.multi_dnsbl and
+	wish to use the INCLUDE feature, you must update your
+	scripts.
+
 0.25  Sun Nov  9 15:01:48 PST 2008
 	correct documentation in Utilities v0.08
 	add 'acceptany' key to DNSBL codes to allow

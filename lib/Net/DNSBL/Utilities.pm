@@ -4,6 +4,10 @@ package Net::DNSBL::Utilities;
 use strict;
 #use diagnostics;
 
+use File::SafeDO qw(
+	DO
+	doINCLUDE
+);
 use vars qw(
 	$VERSION @ISA @EXPORT_OK *UDP 
 	$A1271 $A1272 $A1273 $A1274 $A1275 $A1276 $A1277
@@ -15,7 +19,10 @@ use AutoLoader 'AUTOLOAD';
 require Exporter;
 @ISA = qw(Exporter);
 
-$VERSION = do { my @r = (q$Revision: 0.08 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
+$VERSION = do { my @r = (q$Revision: 0.09 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
+
+*DO = \&File::SafeDO::DO;
+*doINCLUDE = \&File::SafeDO::doINCLUDE;
 
 @EXPORT_OK = qw(
         s_response 
@@ -25,6 +32,7 @@ $VERSION = do { my @r = (q$Revision: 0.08 $ =~ /\d+/g); sprintf "%d."."%02d" x $
         statinit
         cntinit
         DO
+	doINCLUDE
         open_udpNB
 	list2NetAddr
 	matchNetAddr
@@ -41,7 +49,6 @@ $VERSION = do { my @r = (q$Revision: 0.08 $ =~ /\d+/g); sprintf "%d."."%02d" x $
 	setRA
 );
 
-use Config;
 use Net::DNS::Codes qw(
 	BITS_QUERY
 	QR
@@ -81,6 +88,7 @@ Net::DNSBL::Utilities - functions for DNSBL daemons
 	list2hash
         open_udpNB
         DO
+	doINCLUDE
 	list2NetAddr
 	matchNetAddr
 	list_countries
@@ -103,7 +111,8 @@ Net::DNSBL::Utilities - functions for DNSBL daemons
   cntinit($DNSBL,$cp);
   list2hash(\@list,$cp,$val);
   $sock = open_udpNB();
-  $rv = DO($file)
+  $rv = DO($file,$nowarnings)
+  $rv = doINCLUDE($file,$nowarnings);
   $rv=list2NetAddr(\@inlist,\@NAobject);
   $rv = matchNetAddr($ip,\@NAobject);
   ($countries,$code3s,$names) = list_countries;
@@ -328,30 +337,31 @@ sub list2hash {
   }
 }
 
-=item * $rv = DO($file);
+=item * $rv = DO($file,$nowarnings);
 
 This is a fancy 'do file'. It first checks that the file exists and is
 readable, then does a 'do file' to pull the variables and subroutines into
 the current name space.
+
+See the documentation L<File::SafeDO>
 
   input:	file/path/name
   returns:	last value in file
 	    or	undef on error
 	    prints warning
 
-=cut
+=item * $rv = DO($file,$nowarnings);
 
-sub DO($) {
-  my $file = shift;
-  return undef unless
-	$file &&
-	-e $file &&
-	-f $file &&
-	-r $file;
-  $_ = $Config{perlpath};		# bring perl into scope
-  return undef if eval q|system($_, '-w', $file)|;
-  do $file;
-}
+This is a fancy 'do file'. It first checks that the file exists and is
+readable, then does a 'do file' to pull the variables and subroutines into
+the current name space.
+
+See the documentation L<File::SafeDO>
+
+  input:	file/path/name
+  returns:	last value in file
+	    or	undef on error
+	    prints warning
 
 =item * $sock = open_udpNB();
 

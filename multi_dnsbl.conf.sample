@@ -3,10 +3,17 @@
 # sc_BlackList.conf, multi_dnsbl.conf
 # Configuration for sc_BLcheck.pl, sc_BLpreen.pl, and Net::DNSBL::MultiDaemon
 #
-# version 1.20, 11-16-07
+# version 1.21, 11-16-08
 #
 my $DNSBL = {
 
+## additional KEYS may be included with an INCLUDE statement of the form:
+#
+#  INCLUDE => 'path/to/file.conf',
+#
+#  this file may include an INCLUDE statement, as may the next, etc...
+#
+#
 ## Net::DNSBL::MultiDaemon parameters
 
 # the OPTIONAL name of a file that will contain 'hit' statistics for DNSBLS

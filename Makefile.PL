@@ -10,6 +10,7 @@ WriteMakefile(
     'VERSION_FROM'	=> $module, # finds $VERSION
     'PREREQ_PM'		=> {
 				Test::More		=> 0,
+				File::SafeDO		=> 0.12,
 				Net::DNS::Codes		=> 0.09,
 				Net::DNS::ToolKit	=> 0.41,
 				Unix::Syslog		=> 0.97,
