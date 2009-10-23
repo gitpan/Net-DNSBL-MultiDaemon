@@ -1,5 +1,12 @@
 Revision history for Perl extension Net::DNSBL::MultiDaemon
 
+0.27  Thu Oct 22 18:50:33 PDT 2009
+	The extra AUTHORITY records returned from the originating host
+	are no longer included. Some DNSBL's with many mirrors caused
+	this section to overflow and return records that 'bind' would not
+	accept (i.e. longer than the allowed 512 UDP).
+	problem =>	zen.spamhaus.org
+
 0.26  Sun Nov 16 15:47:51 PST 2008
 	replace 'sub DO' with File::SafeDO in Utilities v0.09
 	to support INCLUDE keys in the configuration file

@@ -148,11 +148,6 @@ INSTALLATION / CONFIGURATION / OPERATION
 
             .... results
 
-    Note that the results will contain all of the "authority" and
-    "additional" (glue) records from the responding DNSBL placed into the
-    additional section of the returned record that will have an authority
-    record from of "localhost".
-
   PLUGIN to BIND 9
 
     multi_dnsbl may be used as a plugin helper for a standard bind 9

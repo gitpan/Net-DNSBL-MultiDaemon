@@ -20,7 +20,7 @@ $D_NOTME     = 0x10; # return received response not for me
 $D_ANSTOP    = 0x20; # clear run OK flag if ANSWER present
 $D_VERBOSE   = 0x40; # verbose debug statements to STDERR
 
-$VERSION = do { my @r = (q$Revision: 0.26 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
+$VERSION = do { my @r = (q$Revision: 0.27 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
 
 @EXPORT_OK = qw(
         run
@@ -242,11 +242,6 @@ match from the configured list of DNSBL servers.
   i.e.  dig 2.0.0.127.pseudo.dnsbl
 
         .... results
-
-Note that the results will contain all of the "authority" and "additional"
-(glue) records from the responding DNSBL placed into the additional section
-of the returned record that will have an authority record from of
-"localhost".
 
 =head2 PLUGIN to BIND 9
 
@@ -822,30 +817,33 @@ sub run {
 	  }
 	  $newstat = 1;						# notify refresh that update may be needed
 	  my($nmsg,$noff,@dnptrs) =				# make proto answer
-		_ansrbak($put,$id,$nscount + $arcount +1,$rip,$zone,$type,$ttl,$answer);
+# this causes an over flow from some DNSBLS that have
+# many mirrors, so only the localhost authority record is returned
+#		_ansrbak($put,$id,$nscount + $arcount +1,$rip,$zone,$type,$ttl,$answer);
+		_ansrbak($put,$id,1,$rip,$zone,$type,$ttl,$answer);
 
-# add the ns section from original reply into the authority section so we can see where it came from, it won't hurt anything
-	  foreach(0..$nscount -1) {
-	    ($off,$Oname,$Otype,$Oclass,$Ottl,$Ordlength,$Odata)
-		= $get->next(\$msg,$off);
-	    ($noff,@dnptrs) = $put->NS(\$nmsg,$noff,\@dnptrs,
-		$Oname,$Otype,$Oclass,$Ottl,$Odata);
-	  }
-
-# add the authority section from original reply so we can see where it came from
-	  foreach(0..$arcount -1) {
-	    ($off,$Oname,$Otype,$Oclass,$Ottl,$Ordlength,$Odata)
-		= $get->next(\$msg,$off);
-	    if ($Otype == T_A) {
-		($noff,@dnptrs) = $put->A(\$nmsg,$noff,\@dnptrs,
-		    $Oname,$Otype,$Oclass,$Ottl,$Odata);
-	    } elsif ($Otype == T_AAAA) {
-		($noff,@dnptrs) = $put->AAAA(\$nmsg,$noff,\@dnptrs,
-		    $Oname,$Otype,$Oclass,$Ottl,$Odata);
-	    } else {
-		next;		# skip unknown authority types
-	    }
-	  }
+## add the ns section from original reply into the authority section so we can see where it came from, it won't hurt anything
+#	  foreach(0..$nscount -1) {
+#	    ($off,$Oname,$Otype,$Oclass,$Ottl,$Ordlength,$Odata)
+#		= $get->next(\$msg,$off);
+#	    ($noff,@dnptrs) = $put->NS(\$nmsg,$noff,\@dnptrs,
+#		$Oname,$Otype,$Oclass,$Ottl,$Odata);
+#	  }
+#
+## add the authority section from original reply so we can see where it came from
+#	  foreach(0..$arcount -1) {
+#	    ($off,$Oname,$Otype,$Oclass,$Ottl,$Ordlength,$Odata)
+#		= $get->next(\$msg,$off);
+#	    if ($Otype == T_A) {
+#		($noff,@dnptrs) = $put->A(\$nmsg,$noff,\@dnptrs,
+#		    $Oname,$Otype,$Oclass,$Ottl,$Odata);
+#	    } elsif ($Otype == T_AAAA) {
+#		($noff,@dnptrs) = $put->AAAA(\$nmsg,$noff,\@dnptrs,
+#		    $Oname,$Otype,$Oclass,$Ottl,$Odata);
+#	    } else {
+#		next;		# skip unknown authority types
+#	    }
+#	  }
 	  $msg = $nmsg;
 	  $ROK = 0 if $DEBUG & $D_ANSTOP;
 	}
