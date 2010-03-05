@@ -3,7 +3,7 @@
 # sc_BlackList.conf, multi_dnsbl.conf
 # Configuration for sc_BLcheck.pl, sc_BLpreen.pl, and Net::DNSBL::MultiDaemon
 #
-# version 1.21, 11-16-08
+# version 1.22, 3-4-10
 #
 my $DNSBL = {
 
@@ -13,6 +13,14 @@ my $DNSBL = {
 #
 #  this file may include an INCLUDE statement, as may the next, etc...
 #
+#  The form of the file is:
+#
+#	my $morekeys = {
+#		additional_key1 => whatever,
+#		additional_key2 => [whatever],
+#		additional_key3 => {whatever => value},
+#	etc...
+#	};
 #
 ## Net::DNSBL::MultiDaemon parameters
 
