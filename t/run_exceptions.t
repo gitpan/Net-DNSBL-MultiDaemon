@@ -289,7 +289,7 @@ $off = newhead(\$msg[10], # 54-57
         12345,
         BITS_QUERY,
         1,0,0,0);
-$put->Question(\$msg[10],$off,$blackz,T_NS,C_IN);	# type NS, etc...
+$put->Question(\$msg[10],$off,'1.2.3.4'.$blackz,T_NS,C_IN);	# type NS, etc...
 $exp_rcode[10] = &NXDOMAIN;
 
 $off = newhead(\$msg[11], # 58-61

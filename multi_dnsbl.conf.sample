@@ -3,7 +3,7 @@
 # sc_BlackList.conf, multi_dnsbl.conf
 # Configuration for sc_BLcheck.pl, sc_BLpreen.pl, and Net::DNSBL::MultiDaemon
 #
-# version 1.22, 3-4-10
+# version 1.23, 3-6-10
 #
 my $DNSBL = {
 
@@ -51,6 +51,12 @@ my $DNSBL = {
 # this is probably not what you want. A more   
 # suitable value for co-installation with bind 
 # on the same host would be 127.0.0.1
+#
+# If set for stand alone operation, then a specific
+# interface address should be set so the returned
+# NS record is correct.
+# ###WARNING### not setting will cause the NS record
+# to be returned as the 'localhost' ip 127.0.0.1
 #
   MDipaddr        => '127.0.0.1',
 

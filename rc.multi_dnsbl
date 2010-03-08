@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 #
 # rc.multi_dnsbl
-# version 1.06, 11-16-08
+# version 1.07, 3-6-10
 #
 #
 #################################################################
@@ -10,7 +10,7 @@
 # SpamCannibal.                                                 #
 #################################################################
 #
-# Copyright 2003, Michael Robinton <michael@bizsystems.com>
+# Copyright 2003 - 2010, Michael Robinton <michael@bizsystems.com>
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -120,7 +120,6 @@ while (1) {
   usage('statfile path does not exist or is not writable')
 	unless ($StatStamp = statinit($DNSBL->{MDstatfile},\%STATS));
   $DNSBL->{MDstatrefresh} = 300 unless $DNSBL->{MDstatrefresh};
-  $DNSBL->{MDnetaddr}	  = '0.0.0.0' unless $DNSBL->{MDipaddr};
   $DNSBL->{MDport}	  = 9953 unless $DNSBL->{MDport};
   $pidfile = $DNSBL->{MDpidpath} .'/'. $me . '.pid';    
   local *PID;

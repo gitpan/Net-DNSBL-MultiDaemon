@@ -1,5 +1,18 @@
 Revision history for Perl extension Net::DNSBL::MultiDaemon
 
+0.29  Sat Mar  6 13:53:45 PST 2010
+	Change SOA to return zone name instead of 'localhost' so that
+	stand alone operation returns the correct NS record
+
+	Updated rc.multi_dnsbl to return "bound to" IP address instead
+	of 127.0.0.1  ###WARNING### if this is set to all interfaces
+	'0.0.0.0' the NS record address will be bogus
+
+	Add standard 127.0.0.2 response to query for 127.0.0.1
+
+	Add standard A response for zone only lookup
+	Add standard NS response for zone only lookup
+
 0.28  Thu Mar  4 17:56:50 PST 2010
 	Clarify documentation about INCLUDE statement for multidnsbl.conf
 

@@ -20,7 +20,7 @@ $D_NOTME     = 0x10; # return received response not for me
 $D_ANSTOP    = 0x20; # clear run OK flag if ANSWER present
 $D_VERBOSE   = 0x40; # verbose debug statements to STDERR
 
-$VERSION = do { my @r = (q$Revision: 0.28 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
+$VERSION = do { my @r = (q$Revision: 0.29 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
 
 @EXPORT_OK = qw(
         run
@@ -30,6 +30,11 @@ $VERSION = do { my @r = (q$Revision: 0.28 $ =~ /\d+/g); sprintf "%d."."%02d" x $
 	debug	=> [qw($D_CLRRUN $D_SHRTHD $D_TIMONLY $D_QRESP $D_NOTME $D_ANSTOP $D_VERBOSE)],
 );
 Exporter::export_ok_tags('debug');
+
+my $FATans = 0;		# this causes a response size overflow from some DNSBLS that have
+			# many mirrors, so only the local host authority record is returned
+
+sub fatreturn { return $FATans };	# for testing
 
 use Socket;
 use Net::DNS::Codes qw(
@@ -136,6 +141,7 @@ PTR record that matchs a configurable GENERIC 'regexp' set.
 
 Reject codes are as follows:
 
+  query 2.0.0.127.{zonename}	127.0.0.2
   blocked by configured DNSBL	127.0.0.2
   no reverse DNS		127.0.0.4
   BLOCKED (local blacklist) 	127.0.0.5
@@ -231,6 +237,11 @@ B<sc_BlackList.conf> file:
   MDipaddr      => '0.0.0.0', # PROBABLY NOT WHAT YOU WANT
   MDport        => 9953,
   
+### WARNING ### 
+  failure to set MDipaddr to a valid ip address will result
+  in the authority section return an NS record of INADDR_ANY
+  This will return an invalid NS record in stand alone operation
+
 =head2 STANDALONE OPERATION
 
 For standalone operation, simply set B<MDport = 53>, nothing more is
@@ -507,6 +518,12 @@ sub run {
   local *_alarm = sub {return $DNSBL->{"$_[0]"}->{timeout} || 30};
 
   $BLzone = lc $BLzone;
+  my $myip = $DNSBL->{MDipaddr} || '';
+  if ($myip && $myip ne '0.0.0.0') {
+    $myip = inet_aton($myip);
+  } else {
+    $myip = A1271;
+  }
   $DEBUG = 0 unless $DEBUG;
   my $ROK = ($DEBUG & $D_CLRRUN) ? 0:1;
 
@@ -595,8 +612,8 @@ sub run {
 	&T_SOA,
 	&C_IN,
 	0,		# ttl of SOA record
-	'localhost',
-	'root.localhost',
+	$BLzone,
+	'root.'. $BLzone,
 	$now,
 	86400,
 	43200,
@@ -673,20 +690,24 @@ sub run {
 		($targetIP = "$5.$4.$3.$2") &&
 		($zone = $6) &&
 		$BLzone eq lc $zone) {
-	      if (@NAignore && matchNetAddr($targetIP,\@NAignore)) {	# check for IP's to always pass
+	      if ($rip eq '2.0.0.127') {				# checkfor DNSBL test
+		($msg) = _ansrbak($put,$id,1,$rip,$zone,$type,3600,A1272,$BLzone,$myip);
+		$comment = 'just testing';
+	      }
+	      elsif (@NAignore && matchNetAddr($targetIP,\@NAignore)) {	# check for IP's to always pass
 		not_found($put,$name,$type,$id,\$msg,$SOAptr);		# return unconditional NOT FOUND
 		$STATs->{WhiteList} += 1;				# bump WhiteList count
 		$comment = 'IGNORE';
 	      }
 	      elsif (@NAblock && matchNetAddr($targetIP,\@NAblock)) {	# check for IP's to always block
-		($msg) = _ansrbak($put,$id,1,$rip,$zone,$type,3600,A1275);	# answer 127.0.0.5
+		($msg) = _ansrbak($put,$id,1,$rip,$zone,$type,3600,A1275,$BLzone,$myip);	# answer 127.0.0.5
 		$STATs->{BlackList} += 1;				# bump BlackList count
 		$comment = 'BLOCK';
 	      }
 	      elsif ($BBC &&						# check for IP's to block by country
 		     ($cc = $BBC->country_code_by_addr($targetIP)) &&
 		     (grep($cc eq $_,@{$DNSBL->{BBC}}))) {
-		($msg) = _ansrbak($put,$id,1,$rip,$zone,$type,3600,A1276);	# answer 127.0.0.6
+		($msg) = _ansrbak($put,$id,1,$rip,$zone,$type,3600,A1276,$BLzone,$myip);	# answer 127.0.0.6
 		$STATs->{$cc} += 1;					# bump statistics count
 		$newstat = 1;						# notify refresh that update may be needed
 		$comment = "block $cc";
@@ -705,9 +726,35 @@ sub run {
 		print STDERR $blist[0] if $DEBUG & $D_VERBOSE;
 		last;
 	      }
-	    } else {
+            }
+	    elsif ($BLzone eq lc $name) {
+	      my $noff = newhead(\$msg,
+	      $id,
+	      BITS_QUERY | QR,
+	      1,1,1,0,
+	      );
+	      ($noff,my @dnptrs) = $put->Question(\$msg,$noff,	# 1 question
+		$name,$type,C_IN);				# type is T_A
+	      ($noff,@dnptrs) = $put->A(\$msg,$noff,\@dnptrs,	# 1 answer
+		$name,T_A,C_IN,86400,$myip);
+	      ($noff,@dnptrs) = $put->NS(\$msg,$noff,\@dnptrs,	# 1 authority
+		$name,T_NS,C_IN,86400,$BLzone);
+	    }
+	    else {
 	      not_found($put,$name,$type,$id,\$msg,$SOAptr);
 	    }
+	  } elsif ($type == T_NS && $BLzone eq lc $name) {	# respond with myip address
+	    my $noff = newhead(\$msg,
+	    $id,
+	    BITS_QUERY | QR,
+	    1,1,0,1,
+	    );
+	    ($noff,my @dnptrs) = $put->Question(\$msg,$noff,	# 1 question
+		$name,$type,C_IN);				# type is T_NS
+	    ($noff,@dnptrs) = $put->NS(\$msg,$noff,\@dnptrs,	# 1 answer
+		$name,T_NS,C_IN,$86400,$BLzone);
+	    ($noff,@dnptrs) = $put->A(\$msg,$noff,\@dnptrs,	# 1 additional glue
+		$BLzone,T_A,C_IN,86400,$myip);
 	  } elsif ($type == T_NS ||				# answer common queries with a not found
 		 $type == T_MX ||
 		 $type == T_SOA ||
@@ -816,34 +863,34 @@ sub run {
 	    $AVGs{"$blist[0]"} = 1;
 	  }
 	  $newstat = 1;						# notify refresh that update may be needed
-	  my($nmsg,$noff,@dnptrs) =				# make proto answer
-# this causes an over flow from some DNSBLS that have
-# many mirrors, so only the localhost authority record is returned
-#		_ansrbak($put,$id,$nscount + $arcount +1,$rip,$zone,$type,$ttl,$answer);
-		_ansrbak($put,$id,1,$rip,$zone,$type,$ttl,$answer);
+	  my($nmsg,$noff,@dnptrs) = ($FATans)				# make proto answer
+		? _ansrbak($put,$id,$nscount + $arcount +1,$rip,$zone,$type,$ttl,$answer,$BLzone,$myip)
+		: _ansrbak($put,$id,1,$rip,$zone,$type,$ttl,$answer,$BLzone,$myip);
 
 ## add the ns section from original reply into the authority section so we can see where it came from, it won't hurt anything
-#	  foreach(0..$nscount -1) {
-#	    ($off,$Oname,$Otype,$Oclass,$Ottl,$Ordlength,$Odata)
-#		= $get->next(\$msg,$off);
-#	    ($noff,@dnptrs) = $put->NS(\$nmsg,$noff,\@dnptrs,
-#		$Oname,$Otype,$Oclass,$Ottl,$Odata);
-#	  }
-#
-## add the authority section from original reply so we can see where it came from
-#	  foreach(0..$arcount -1) {
-#	    ($off,$Oname,$Otype,$Oclass,$Ottl,$Ordlength,$Odata)
-#		= $get->next(\$msg,$off);
-#	    if ($Otype == T_A) {
-#		($noff,@dnptrs) = $put->A(\$nmsg,$noff,\@dnptrs,
-#		    $Oname,$Otype,$Oclass,$Ottl,$Odata);
-#	    } elsif ($Otype == T_AAAA) {
-#		($noff,@dnptrs) = $put->AAAA(\$nmsg,$noff,\@dnptrs,
-#		    $Oname,$Otype,$Oclass,$Ottl,$Odata);
-#	    } else {
-#		next;		# skip unknown authority types
-#	    }
-#	  }
+  if ($FATans) {
+	  foreach(0..$nscount -1) {
+	    ($off,$Oname,$Otype,$Oclass,$Ottl,$Ordlength,$Odata)
+		= $get->next(\$msg,$off);
+	    ($noff,@dnptrs) = $put->NS(\$nmsg,$noff,\@dnptrs,
+		$Oname,$Otype,$Oclass,$Ottl,$Odata);
+	  }
+
+# add the authority section from original reply so we can see where it came from
+	  foreach(0..$arcount -1) {
+	    ($off,$Oname,$Otype,$Oclass,$Ottl,$Ordlength,$Odata)
+		= $get->next(\$msg,$off);
+	    if ($Otype == T_A) {
+		($noff,@dnptrs) = $put->A(\$nmsg,$noff,\@dnptrs,
+		    $Oname,$Otype,$Oclass,$Ottl,$Odata);
+	    } elsif ($Otype == T_AAAA) {
+		($noff,@dnptrs) = $put->AAAA(\$nmsg,$noff,\@dnptrs,
+		    $Oname,$Otype,$Oclass,$Ottl,$Odata);
+	    } else {
+		next;		# skip unknown authority types
+	    }
+	  }
+  } # end FATans
 	  $msg = $nmsg;
 	  $ROK = 0 if $DEBUG & $D_ANSTOP;
 	}
@@ -912,7 +959,7 @@ sub run {
 	    $AVGs{"$blist[0]"} = 1;
 	  }
 	  $newstat = 1;						# notify refresh that update may be needed
-	  ($msg) = _ansrbak($put,$id,1,$rip,$zone,$type,3600,A1274);
+	  ($msg) = _ansrbak($put,$id,1,$rip,$zone,$type,3600,A1274,$BLzone,$myip);
 	  send($L,$msg,0,$l_Sin);
 	  print STDERR " expired Rdns\n" if $DEBUG & $D_VERBOSE;
 	}
@@ -958,11 +1005,11 @@ sub run {
 
 # answer back prototype
 #
-# input:	$put,$id,$arcount,$rip,$zone,$type,$ttl,$answer
+# input:	$put,$id,$arcount,$rip,$zone,$type,$ttl,$answer,$BLzone
 # returns:	$message,$off,@dnptrs
 #
 sub _ansrbak {
-  my($put,$id,$arc,$rip,$zone,$type,$ttl,$ans) = @_;
+  my($put,$id,$arc,$rip,$zone,$type,$ttl,$ans,$BLzone,$myip) = @_;
   my $nmsg;
   my $noff = newhead(\$nmsg,
 	$id,
@@ -974,9 +1021,9 @@ sub _ansrbak {
   ($noff,@dnptrs) = $put->A(\$nmsg,$noff,\@dnptrs,		# 1 answer
 	$rip .'.'. $zone,T_A,C_IN,$ttl,$ans);
   ($noff,@dnptrs) = $put->NS(\$nmsg,$noff,\@dnptrs,	# 1 authority
-	$zone,T_NS,C_IN,86400,'localhost');
+	$zone,T_NS,C_IN,86400,$BLzone);
   ($noff,@dnptrs) = $put->A(\$nmsg,$noff,\@dnptrs,	# 1 additional glue
-	'localhost',T_A,C_IN,86400,A1271);		# lie about nameserver 127.0.0.1
+	$BLzone,T_A,C_IN,86400,$myip);		# show MYIP
   return($nmsg,$noff,@dnptrs)
 }
 
@@ -1053,7 +1100,7 @@ Michael Robinton, michael@bizsystems.com
 
 =head1 COPYRIGHT
 
-Copyright 2003, Michael Robinton & BizSystems
+Copyright 2003 - 2010, Michael Robinton & BizSystems
 This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
 the Free Software Foundation; either version 2 of the License, or 

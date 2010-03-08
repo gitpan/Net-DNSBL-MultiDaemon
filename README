@@ -43,6 +43,7 @@ DESCRIPTION
 
     Reject codes are as follows:
 
+      query 2.0.0.127.{zonename}    127.0.0.2
       blocked by configured DNSBL   127.0.0.2
       no reverse DNS                127.0.0.4
       BLOCKED (local blacklist)     127.0.0.5
@@ -136,6 +137,10 @@ INSTALLATION / CONFIGURATION / OPERATION
       MDipaddr      => '0.0.0.0', # PROBABLY NOT WHAT YOU WANT
       MDport        => 9953,
   
+    ### WARNING ### failure to set MDipaddr to a valid ip address will
+    result in the authority section return an NS record of INADDR_ANY This
+    will return an invalid NS record in stand alone operation
+
   STANDALONE OPERATION
 
     For standalone operation, simply set MDport = 53, nothing more is
@@ -381,9 +386,9 @@ AUTHOR
     Michael Robinton, michael@bizsystems.com
 
 COPYRIGHT
-    Copyright 2003, Michael Robinton & BizSystems This program is free
-    software; you can redistribute it and/or modify it under the terms of
-    the GNU General Public License as published by the Free Software
+    Copyright 2003 - 2010, Michael Robinton & BizSystems This program is
+    free software; you can redistribute it and/or modify it under the terms
+    of the GNU General Public License as published by the Free Software
     Foundation; either version 2 of the License, or (at your option) any
     later version.
 
