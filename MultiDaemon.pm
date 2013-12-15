@@ -20,14 +20,15 @@ $D_NOTME     = 0x10; # return received response not for me
 $D_ANSTOP    = 0x20; # clear run OK flag if ANSWER present
 $D_VERBOSE   = 0x40; # verbose debug statements to STDERR
 
-$VERSION = do { my @r = (q$Revision: 0.29 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
+$VERSION = do { my @r = (q$Revision: 0.35 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
 
 @EXPORT_OK = qw(
         run
         bl_lookup  
+	set_extension
 );
 %EXPORT_TAGS = (
-	debug	=> [qw($D_CLRRUN $D_SHRTHD $D_TIMONLY $D_QRESP $D_NOTME $D_ANSTOP $D_VERBOSE)],
+	debug	=> [qw($D_CLRRUN $D_SHRTHD $D_TIMONLY $D_QRESP $D_NOTME $D_ANSTOP $D_VERBOSE uniqueID)],
 );
 Exporter::export_ok_tags('debug');
 
@@ -35,6 +36,11 @@ my $FATans = 0;		# this causes a response size overflow from some DNSBLS that ha
 			# many mirrors, so only the local host authority record is returned
 
 sub fatreturn { return $FATans };	# for testing
+
+my $eXT = undef;	# extension code for "Private Use" as defined in outlined in RFC-6195
+			# Query types
+			# Classes
+			# Types
 
 use Socket;
 use Net::DNS::Codes qw(
@@ -62,6 +68,7 @@ use Net::DNS::Codes qw(
 	BITS_QUERY
 	RD
 	QR
+	CD
 );
 use Net::DNS::ToolKit 0.16 qw(
 	newhead
@@ -73,6 +80,8 @@ use Net::DNS::ToolKit::RR;
 #	print_head
 #	print_buf
 #);
+
+#use Data::Dumper;
 
 use Net::DNSBL::Utilities 0.07 qw(
         s_response 
@@ -105,10 +114,11 @@ Net::DNSBL::MultiDaemon - multi DNSBL prioritization
 	:debug
         run
         bl_lookup  
+	set_extension
   );
 
   run($BLzone,$L,$R,$DNSBL,$STATs,$Run,$Sfile,$StatStamp,$DEBUG)
-  bl_lookup($put,$mp,$rtp,$sinaddr,$alarm,$id,$rip,$type,$zone,@blist);
+  bl_lookup($put,$mp,$rtp,$sinaddr,$alarm,$rid,$id,$rip,$type,$zone,@blist);
 
 =head1 DESCRIPTION
 
@@ -236,6 +246,8 @@ B<sc_BlackList.conf> file:
   MDstatrefresh => 300,       # seconds
   MDipaddr      => '0.0.0.0', # PROBABLY NOT WHAT YOU WANT
   MDport        => 9953,
+  MDcache       => 10000,     # an entry takes ~400 bytes
+                              # default 10000 (to small)
   
 ### WARNING ### 
   failure to set MDipaddr to a valid ip address will result
@@ -356,7 +368,7 @@ A pointer to a UDP listener object
 =item * $R
 
 A pointer to a unbound UDP socket 
-used for interogation an receiving replies for the multiple DNSBL's
+used for interogation and receiving replies for the multiple DNSBL's
 
 =item * $DNSBL
 
@@ -381,6 +393,24 @@ A pointer to the configuration hash of the form:
 	'127.0.0.0/8',  # ignore all test entries and localhost
 	],
 
+    # Do rhbl lookups only, default false
+    # all other rejection classes are disabled, IGNORE, BLOCK, BBC, in-addr.arpa
+    # RHBL need only be "true" for operation. If OPTIONAL URBL conditioning
+    # is needed, then the parameters in the has must be added
+    	RHBL 	=> {	# optional URBL preparation
+		urblwhite => [
+			'path/to/local/file',
+			'path/to/local/file'	# local whitelist
+		],
+    # NOTE: level 3 tld's should be first before level 2 tld's,
+    # local blacklist last
+		urbltlds  => [
+			'path/to/local/file',	# level 3 tld's
+			'path/to/local/file',	# level 2 tld's
+			'path/to/local/file'	# local blacklist
+		],
+	},
+
     # Authoratative answers
 	'AUTH'	=> 0,
 
@@ -399,12 +429,20 @@ A pointer to the configuration hash of the form:
 
     # RBL zones as follows: OPTIONAL
 	'domain.name' => {
+    # mark this dnsbl to require right hand side domain processing
+    # requires URBL::Prepare
+# NOT IMPLEMENTED
+#	    urbl	=> 1,
 	    acceptany	=> 'comment - treat any response as valid',
     # or
 	    accept	=> {
 		'127.0.0.2' => 'comment',
 		'127.0.0.3' => 'comment',
 	    },
+    # or
+    # mask the low 8 bits and accept any true result
+	    acceptmask	=> 0x3D,	# accepts 0011 1101
+
   #	    timeout	=> 30,	# default seconds to wait for dnsbl
 	},
 
@@ -422,6 +460,10 @@ A pointer to the configuration hash of the form:
   # syslog. Specify the facility, one of: 
   # LOG_EMERG LOG_ALERT LOG_CRIT LOG_ERR LOG_WARNING LOG_NOTICE LOG_INFO LOG_DEBUG
   #	MDsyslog	=> 'LOG_WARNING',
+  #
+  #	cache lookups using the TTL of the providing DNSBL
+  #	each cache entry takes about 400 bytes, minimum size = 1000
+  #	MDcache		=> 1000,      # 1000 is too small
   };
 
 Zone labels that are not of the form *.*... are ignored, making this hash
@@ -473,7 +515,10 @@ my $tick	= 0;	# second ticker
 my $interval	= 300;	# averaging interval
 my $bucket	= 24 * 60 * 60;	# 24 hours for now...
 my $weight	= 5;	# weight new stuff higher than old stuff
+my $csize	= 0;	# cache size and switch
+my $cused	= 0;	# cache in use
 my ($now, $next);
+my $newstat;		# new statistics flag, used by run
 
 sub average {
   my $STATs = shift;
@@ -485,6 +530,22 @@ sub average {
     $AVGs{"$_"} = ($AVGs{"$_"} + ($weight * $CNTs{"$_"})) * $multiplier;
     $CNTs{"$_"} = 0;
   }
+}
+
+# increment statistics for "real" DNSBL's
+# input:	STATS pointer
+#		DNSBL string
+
+sub bump_stats {
+  my($STATs, $blist_0) = @_;
+  $STATs->{"$blist_0"} += 1;				# bump statistics count
+  if (exists $CNTs{"$blist_0"}) {
+    $CNTs{"$blist_0"} += 1;
+  } else {
+    $CNTs{"$blist_0"} = 1;
+    $AVGs{"$blist_0"} = 1;
+  }
+  $newstat = 1 unless $newstat;				# notify refresh that update may be needed
 }
 
 sub by_average {
@@ -504,19 +565,162 @@ sub by_average {
   }
 }
 
-# for testing
-# set now and next, return pointers to internal averaging arrays
+# reverse digits in ipV4 address
 #
-sub set_nownext {
-  ($now,$next) = @_;
-  return($interval,\%AVGs,\%CNTs);
+# input:	ip
+# returns:	reversed ip
+#
+sub revIP {
+  join('.',reverse split /\./,$_[0]);
 }
 
+# cache takes about 400 bytes per entry
+#
+my %cache = (
+#
+#	ip address	=> {
+#		expires	=>	time,		now + TTL from response or 3600 minimum
+#		used	=>	time,		time cache item was last used
+#		who	=>	$blist[0],	which DNSBL caused caching
+#		txt	=>	'string',	txt from our config file or empty
+#	},
+);
+my @topurge;			# working array
+
+# for testing
+# set now and next, csize return pointers to internal averaging arrays and cache
+#
+sub set_nownext {
+  ($now,$next,$csize) = @_;
+  return($interval,\%AVGs,\%CNTs,\%cache,\@topurge);
+}
+
+# purge cache when called from "run"
+
+my $prp = -1;			# run pointer, see "mode" below
+my $pai;			# array index
+my $pnd;			# array end
+
+# piecewise purge of expired cache items performs gnome sort while purging
+#
+# followed by conditional purge of cache size overrun of oldest touched
+# cache items or those that will expire the soonest
+#
+# input:	nothing
+# returns:	mode
+#		-1	waiting to be initialized
+#		 0	purging expired elements + gnome sort
+#		 1	purging cache overrun
+
+sub purge_cache {
+  if ($prp == 0) {			# run state to purge expired elements
+    my $k1 = $topurge[$pai];
+#print STDERR "$pnd, $pai";
+    if (exists $cache{$k1}) {
+      my $j = $pai +1;
+      my $k2 = $topurge[$j];
+      if ($cache{$k1}->{expires} < $now) {
+	delete $cache{$k1};
+	splice(@topurge,$pai,1);	# remove element from cache array
+	$pnd--;
+#print STDERR " delete k1 = $k1\n";
+      }
+      elsif (exists $cache{$k2}) {
+	if ($cache{$k2}->{expires} < $now) {
+	  delete $cache{$k2};
+	  splice(@topurge,$j,1);	# remove element from cache array
+	  $pnd--;
+#print STDERR " delete k2 = $k2\n";
+	}
+	elsif (	$cache{$k1}->{used} > $cache{$k2}->{used}		# oldest use
+		|| ($cache{$k1}->{used} == $cache{$k2}->{used}		# or if equal, 
+		    && $cache{$k1}->{expires} > $cache{$k2}->{expires})	# expires soonest
+	) {
+	  @topurge[$pai,$j] = @topurge[$j,$pai];
+	  $pai--;
+	  $pai = 0 if $pai < 0;
+#print STDERR " swap k1, k2 - $k1 <=> $k2\n";
+	}
+	else {
+	  $pai++;
+#print STDERR " k1, k2 ok - $k1  :  $k2\n";
+	}
+      }
+      else {
+	splice(@topurge,$j,1);		# remove element from cache array
+	$pnd--;
+#print STDERR " remove k2 = $k2\n";
+      }
+    }
+    else {
+      splice(@topurge,$pai,1);		# remove element from cache array
+      $pnd--;
+#print STDERR " remove k1 = $k1\n";
+    }
+    return $prp if $pai < $pnd; 	# reached end?
+# done, set next state
+    $pnd++;
+    $pnd -= $csize;
+    if ($pnd > 0) {			# must delete overrun elements
+      $prp = 1;
+      $pai = 0;
+    } else {
+      $prp = -1;			# set to initialization state
+    }
+  }
+  elsif ($prp > 0) {			# remove cache over run
+    my $k = $topurge[$pai];
+    delete $cache{$k} if exists $cache{$k};
+    $pai++;
+    unless ($pai < $pnd) {
+      $prp = -1;
+    }
+  }
+  else {
+    return $prp unless $csize;		# not enabled
+    $pnd = @topurge = keys %cache;
+    $cused = $pnd;			# update amount of cache in use
+    return $prp unless $pnd;		# nothing to do
+    $pnd--;				# end of array
+    $pai = 0;				# array index
+    $prp = 0;				# run state sort
+  }
+  return $prp;
+}
+
+# setURBLdom
+#
+# sets breadcrumbs for stripped domain for URBL's
+#
+# input:	remote IP or domain
+#		remote ID
+#		notRHBL
+#		ubl method pointer
+#		blacklist array pointer
+#		remoteThreads ptr
+# return:	$rid
+#
+sub setURBLdom {
+  my($rip,$rid,$notRHBL,$ubl,$bap,$rtp,$n) = @_;
+  return $rid if $notRHBL;		# don't even need to check
+  return $rid unless $ubl;		# URBL::Prepare not loaded
+  $rid = uniqueID() unless $rid;	# set $rid if it is empty
+  $rtp->{$rid} = {} unless exists $rtp->{$rid};
+  my $domain = '';
+  if ($bap->{urbl} &&	# urbl domain conversion needed for this RHBL?
+      ($domain = $ubl->urbldomain($rip))) {
+     $rtp->{$rid}->{urbl} = $domain;
+  } else {
+    $rtp->{$rid}->{urbl} = '';
+  }
+  $rtp->{$rid}->{N}= $n;
+  $rid;
+}
 sub run {
   my ($BLzone,$L,$R,$DNSBL,$STATs,$Run,$Sfile,$StatStamp,$DEBUG) = @_;
-#open(Tmp,'>/tmp/multidnsbl.log');
+#open(Tmp,'>>/tmp/multidnsbl.log');
+#print Tmp "---------------------------\n";
   local *_alarm = sub {return $DNSBL->{"$_[0]"}->{timeout} || 30};
-
   $BLzone = lc $BLzone;
   my $myip = $DNSBL->{MDipaddr} || '';
   if ($myip && $myip ne '0.0.0.0') {
@@ -534,9 +738,10 @@ sub run {
 	$name,$type,$class,
 	$ttl,$rdl,@rdata,
 	$l_Sin,$rip,$zone,@blist,
-	%remoteThreads,
+	%remoteThreads,$rid,
 	$rin,$rout,$nfound,
-	$BBC,@NAignore,@NAblock);
+	$BBC,@NAignore,@NAblock,
+	$notRHBL,$ubl);
 
   my $LogLevel = 0;
   if ($DNSBL->{MDsyslog}) {		# if logging requested
@@ -557,14 +762,50 @@ sub run {
   }
 
 # fetch pointer to Geo::IP methods
-  if ($DNSBL->{BBC} && ref $DNSBL->{BBC} eq 'ARRAY' && @{$DNSBL->{BBC}}) {
-    require Geo::IP::PurePerl;
+  if ($DNSBL->{BBC} && ref $DNSBL->{BBC} eq 'ARRAY' && @{$DNSBL->{BBC}} && eval { require Geo::IP::PurePerl }) {
     $BBC = new Geo::IP::PurePerl;
+  } else {
+    $DNSBL->{BBC} = '';
   }
 
+# check for caching
+  if (exists $DNSBL->{MDcache}) {
+    $csize = $DNSBL->{MDcache};
+    $csize = 10000 if $DNSBL->{MDcache} < 10000;
+  }
+
+# check for right hand side block list operation
+  if ($DNSBL->{RHBL}) {
+    $notRHBL = 0;
+    if (ref $DNSBL->{RHBL} && 
+	((exists $DNSBL->{RHBL}->{urbltlds} && ref($DNSBL->{RHBL}->{urbltlds}) eq 'ARRAY') ||
+	 (exists $DNSBL->{RHBL}->{urblwhite} && ref($DNSBL->{RHBL}->{urblwhite}) eq 'ARRAY')) &&
+	eval {
+		no warnings;
+		require URBL::Prepare;
+	}
+  ) {
+      $ubl = new URBL::Prepare;
+      if (exists $DNSBL->{RHBL}->{urlwhite} && ref($DNSBL->{RHBL}->{urlwhite}) eq 'ARRAY') {
+	$ubl->loadcache(@{$DNSBL->{RHBL}->{urlwhite}});		# cache whitelist file
+      }
+      if (exists $DNSBL->{RHBL}->{urltld3} && ref($DNSBL->{RHBL}->{urltld3}) eq 'ARRAY') {
+	$ubl->loadcache(@{$DNSBL->{RHBL}->{urltld3}});		# cache tld3 blacklist file
+      }
+      if (exists $DNSBL->{RHBL}->{urltld2} && ref($DNSBL->{RHBL}->{urltld2}) eq 'ARRAY') {
+	$ubl->loadcache(@{$DNSBL->{RHBL}->{urltld2}});		# cache tld2 blacklist file
+      }
+      $ubl->cachetlds($DNSBL->{RHBL}->{urbltlds});
+      $ubl->cachewhite($DNSBL->{RHBL}->{urblwhite});
+    }
+  } else {
+    $notRHBL = 1;
+  }
 #select Tmp;
 #$| = 1;
 #print Tmp "running $$\n";
+#select STDOUT;
+
 
 # set up GENERIC PTR tests
   my($iptr,$regexptr);
@@ -589,7 +830,7 @@ sub run {
 
   $now = time;
   $next = $now + $interval;
-  my $newstat = 0;			# new statistics flag
+  $newstat = 0;				# new statistics flag
   my $refresh = $now + $$Run;		# update statistics "then"
 
   local $SIG{USR1} = sub {$newstat = 2}; # force write of stats now
@@ -655,7 +896,12 @@ sub run {
 	$comment = 'no bl';
 	setAUTH(0);						# clear authority
 	setRA($rd);
-	if ($opcode != QUERY) {
+# if OPCODE
+	if ($eXT && exists $eXT->{OPCODE} && $eXT->{OPCODE}->($eXT,$get,$put,\$msg,
+		$off,$id,$qr,$opcode,$aa,$tc,$rd,$ra,$mbz,$ad,$cd,$rcode,$qdcount,$ancount,$nscount,$arcount)) {
+	  ; # message updated
+	  $comment = 'mdextension opcode';
+	} elsif ($opcode != QUERY) {
 	  s_response(\$msg,NOTIMP,$id,1,0,0,0);
 	  $comment = 'not implemented';
 	} elsif (
@@ -665,51 +911,88 @@ sub run {
 		$arcount
 		) {
 	  s_response(\$msg,FORMERR,$id,$qdcount,$ancount,$nscount,$arcount);
-	  $comment = 'format error';
+	  $comment = 'format error 1';
 	} elsif (
 		(($off,$name,$type,$class) = $get->Question(\$msg,$off)) && 
 		! $name) {					# name must exist
 	  s_response(\$msg,FORMERR,$id,1,0,0,0);
-	  $comment = 'format error';
-	} elsif ($class != C_IN) {				# class must be C_IN
+	  $comment = 'format error 2';
+# if CLASS
+	} elsif (!($eXT && exists $eXT->{CLASS} && $eXT->{CLASS}->($eXT,$get,$put,$id,$opcode,\$name,\$type,\$class)) &&
+		$class != C_IN) {				# class must be C_IN
 	  s_response(\$msg,REFUSED,$id,$qdcount,$ancount,$nscount,$arcount);
 	  $comment = 'refused';
-	} elsif ($name !~ /$BLzone$/i) {			# question must be for this zone
+# if NAME
+	} elsif (($eXT && exists $eXT->{NAME} && $eXT->{NAME}->($eXT,$get,$put,$id,$opcode,\$name,\$type,\$class)) ||
+		$name !~ /$BLzone$/i) {			# question must be for this zone
 	  s_response(\$msg,NXDOMAIN,$id,1,0,0,0);
 	  $comment = 'not this zone';
 	} else {
-
 # THIS IS OUR ZONE request, generate a thread to handle it
 
 	  print STDERR $name,' ',TypeTxt->{$type},' ' if $DEBUG & $D_VERBOSE;
 
-	  if (	$type == T_A ||
-		$type == T_ANY) {
-	    if ($name =~ /^((\d+)\.(\d+)\.(\d+)\.(\d+))\.(.+)/ &&
-		($rip = $1) &&
-		($targetIP = "$5.$4.$3.$2") &&
-		($zone = $6) &&
-		$BLzone eq lc $zone) {
-	      if ($rip eq '2.0.0.127') {				# checkfor DNSBL test
-		($msg) = _ansrbak($put,$id,1,$rip,$zone,$type,3600,A1272,$BLzone,$myip);
+# if TYPE
+	  if ($eXT && exists $eXT->{TYPE} && (my $rv = $eXT->{TYPE}->($eXT,$get,$put,$id,$opcode,\$name,\$type,\$class))) {
+	    $msg = $rv;
+	    $comment = 'Extension type';
+	  } elsif ( $type == T_A ||
+	    $type == T_ANY ||
+	    $type == T_TXT) {
+	    if (( $notRHBL &&
+		  $name =~ /^((\d+)\.(\d+)\.(\d+)\.(\d+))\.(.+)/ &&
+		  ($rip = $1) &&
+		  ($targetIP = "$5.$4.$3.$2") &&
+		  ($zone = $6) &&
+		  $BLzone eq lc $zone) ||
+# check for valid RFC1034 domain name, but allow digits in the first character
+		(!$notRHBL &&								# check RHBL zones
+###### CHANGE this REGEXP to alter permissible domain name patterns
+		  $name =~ /^([a-zA-Z0-9][a-zA-Z0-9\.\-]+[a-zA-Z0-9])\.$BLzone$/ &&	# valid domain name
+		  ($rip = $1) &&
+		  ($targetIP = '' || 1) &&
+		  ($zone = $BLzone))) {
+	      my $expires;
+# if CACHE
+	      if ($eXT && exists $eXT->{CACHE} && (my $rv = $eXT->{CACHE}->($eXT,$get,$put,$id,$opcode,$rip,\$name,\$type,\$class,$ubl))) {
+		$msg = $rv;
+	      }
+	      elsif ($rip eq '2.0.0.127') {				# checkfor DNSBL test
+		($msg) = _ansrbak($put,$id,1,$rip,$zone,$type,3600,A1272,$BLzone,$myip,'DNSBL test response to 127.0.0.2');
 		$comment = 'just testing';
 	      }
-	      elsif (@NAignore && matchNetAddr($targetIP,\@NAignore)) {	# check for IP's to always pass
+### NOTE, $now does not get updated very often if the host is busy processing in this routine, but at least every 5 minutes.... good enough
+	      elsif (	$csize && 					# cacheing enabled
+			exists $cache{$rip} &&				# item exists in cache
+			($expires = $cache{$rip}->{expires}) > $now ) {	# cache not expired
+		$cache{$rip}->{used} = $now;				# update last used time
+		my $blist_0 = $cache{$rip}->{who};
+		my $txt = $cache{$rip}->{txt};
+		$txt = $txt ? $txt . $targetIP : '';
+	        ($msg) = _ansrbak($put,$id,1,$rip,$zone,$type,$expires - $now,A1272,$BLzone,$myip,$txt);	# send cached record
+		$comment = 'cache record';
+		bump_stats($STATs,$blist_0);
+	      }
+	      elsif ($type == T_TXT) {					# none of the rest of static stuff has TXT records
+		not_found($put,$name,$type,$id,\$msg,$SOAptr);
+		$comment = 'no TXT';
+	      }
+	      elsif ($notRHBL && @NAignore && matchNetAddr($targetIP,\@NAignore)) {	# check for IP's to always pass
 		not_found($put,$name,$type,$id,\$msg,$SOAptr);		# return unconditional NOT FOUND
 		$STATs->{WhiteList} += 1;				# bump WhiteList count
 		$comment = 'IGNORE';
 	      }
-	      elsif (@NAblock && matchNetAddr($targetIP,\@NAblock)) {	# check for IP's to always block
+	      elsif ($notRHBL && @NAblock && matchNetAddr($targetIP,\@NAblock)) {	# check for IP's to always block
 		($msg) = _ansrbak($put,$id,1,$rip,$zone,$type,3600,A1275,$BLzone,$myip);	# answer 127.0.0.5
 		$STATs->{BlackList} += 1;				# bump BlackList count
 		$comment = 'BLOCK';
 	      }
-	      elsif ($BBC &&						# check for IP's to block by country
+	      elsif ($notRHBL && $BBC &&				# check for IP's to block by country
 		     ($cc = $BBC->country_code_by_addr($targetIP)) &&
 		     (grep($cc eq $_,@{$DNSBL->{BBC}}))) {
 		($msg) = _ansrbak($put,$id,1,$rip,$zone,$type,3600,A1276,$BLzone,$myip);	# answer 127.0.0.6
 		$STATs->{$cc} += 1;					# bump statistics count
-		$newstat = 1;						# notify refresh that update may be needed
+		$newstat = 1 unless $newstat;				# notify refresh that update may be needed
 		$comment = "block $cc";
 	      }
 	      else {
@@ -720,14 +1003,20 @@ sub run {
 		  push @blist, $_;
 		}
 		push @blist, 'genericPTR' if $regexptr;
-
-		bl_lookup($put,\$msg,\%remoteThreads,$l_Sin,_alarm($blist[0]),$id,$rip,$type,$zone,@blist);
+# add bread crumbs for Extensions if necessary
+		$rid = undef;	# trial remote ID
+		if ($eXT && exists $eXT->{LOOKUP}) {
+		  $rid = uniqueID();
+		  $rid = $eXT->{LOOKUP}->($eXT,$get,$put,$rid,$id,$opcode,\$name,\$type,\$class,\%remoteThreads);
+		}
+		$rid = setURBLdom($rip,$rid,$notRHBL,$ubl,$DNSBL->{$blist[0]},\%remoteThreads,0);	# initialize urbl domain lookup name
+		bl_lookup($put,\$msg,\%remoteThreads,$l_Sin,_alarm($blist[0]),$rid,$id,$rip,$type,$zone,@blist);
 		send($R,$msg,0,$R_Sin);				# udp may not block
 		print STDERR $blist[0] if $DEBUG & $D_VERBOSE;
 		last;
 	      }
             }
-	    elsif ($BLzone eq lc $name) {
+	    elsif ($BLzone eq lc $name && $type != T_TXT) {
 	      my $noff = newhead(\$msg,
 	      $id,
 	      BITS_QUERY | QR,
@@ -771,6 +1060,7 @@ sub run {
 	}
 	send($L,$msg,0,$l_Sin);					# udp may not block on send
 	print STDERR " $comment\n" if $DEBUG & $D_VERBOSE;
+#print Tmp "$comment\n";
 	last;
       }
 ##################### IF RESPONSE  ###############################
@@ -781,30 +1071,32 @@ sub run {
 	  return 'short header' if $DEBUG & $D_SHRTHD;
 	  last;
 	}
-	($off,$id,$qr,$opcode,$aa,$tc,$rd,$ra,$mbz,$ad,$cd,$rcode,
+	($off,$rid,$qr,$opcode,$aa,$tc,$rd,$ra,$mbz,$ad,$cd,$rcode,
 		$qdcount,$ancount,$nscount,$arcount)
 		= gethead(\$msg);
+#print Tmp "GOT $rid, rcode=$rcode\n";
 	unless (  $tc == 0 &&
 		  $qr == 1 &&
 		  $opcode == QUERY &&
 		  ($rcode == NOERROR || $rcode == NXDOMAIN || $rcode == SERVFAIL) &&
 		  $qdcount == 1 &&
-		  exists $remoteThreads{$id}) {			# must not be my question!
+		  exists $remoteThreads{$rid}) {			# must not be my question!
 	  return 'not me 1' if $DEBUG & $D_NOTME;
 	  last;
 	}
-	($l_Sin,$rip,$type,$zone,@blist) = @{$remoteThreads{$id}->{args}};
-
+	($l_Sin,$rip,$id,$type,$zone,@blist) = @{$remoteThreads{$rid}->{args}};
+	my $urbldom = exists $remoteThreads{$rid}->{urbl} ? $remoteThreads{$rid}->{urbl} : '';
 	($off,$name,$t,$class) = $get->Question(\$msg,$off);
-
-	my($answer,@generic);
+	my($answer,$attl,@generic);
 	if ($ancount && $rcode == &NOERROR) {
-	  $name =~ /^(\d+\.\d+\.\d+\.\d+)\.(.+)$/;
+	  $name =~ /^(\d+\.\d+\.\d+\.\d+)\.(.+)$/ || $name =~ /^([a-zA-Z0-9][a-zA-Z0-9\.\-]+[a-zA-Z0-9])\.($blist[0])$/;
 	  my $z = lc $2;
+#print Tmp "RESPONSE U $urbldom, R $rip, One $1, N $name, Z $z\n";
 	  $z = ($z eq lc $blist[0]) || ($z eq 'in-addr.arpa' && $blist[0] eq 'genericPTR')
 		? 1 : 0;
 	  unless (  $z &&					# not my question
-	  	    $1 eq $rip &&				# not my question
+	  	    ((!$urbldom && $rip eq $1) ||
+		     ($urbldom && $urbldom eq $1)) &&		# not my question
 		    ($t == T_A || $t == T_PTR) &&		# not my question
 		    $class == C_IN) {				# not my question
 	    return 'not me 2' if $DEBUG & $D_NOTME;
@@ -812,8 +1104,8 @@ sub run {
 	  }
 	  undef $answer;
 
-	setAUTH($aa);						# mirror out authority state
-	setRA($rd);
+	  setAUTH($aa);						# mirror out authority state
+	  setRA($rd);
 
 	ANSWER:
 	  foreach(0..$ancount -1) {
@@ -822,12 +1114,16 @@ sub run {
 	    if ($t == T_A) {
 	      if (exists $DNSBL->{"$blist[0]"}->{acceptany}) {
 		$answer = A1272;
+		$attl = $ttl;
 		last ANSWER;
 	      }
+	      my $mask = (exists $DNSBL->{"$blist[0]"}->{acceptmask})
+		? $DNSBL->{"$blist[0]"}->{acceptmask} : 0;
 	      while($answer = shift @rdata) {			# see if answer is on accept list
 		my $IP = inet_ntoa($answer);
-		if (grep($IP eq $_,keys %{$DNSBL->{"$blist[0]"}->{accept}})) {
+		if ($mask & unpack("N",$answer) || grep($IP eq $_,keys %{$DNSBL->{"$blist[0]"}->{accept}})) {
 		  $answer = A1272;
+		  $attl = $ttl;					# preserve TTL of this responder
 		  last ANSWER;
 		}
 		undef $answer;
@@ -838,8 +1134,10 @@ sub run {
 	      push @generic, $rdata[0];
 	    }
 	  } # end of each ANSWER
+	  $ttl = $attl;						# restore responder TTL
 	}
 	elsif ($t == T_PTR && ($rcode == NXDOMAIN || $rcode == SERVFAIL)) { # no reverse lookup
+#print Tmp "PTR w/ NXDOMAIN or SERVFAIL\n";
 	  $answer = A1274;
 	  $ttl = 3600;
 	  $nscount = $arcount = 0;
@@ -852,21 +1150,42 @@ sub run {
 	    push @names, $g if $g && ! grep($g =~ /$_/i, @$regexptr);
 	  }
 	  $answer = A1277 unless @names;
+	  $ttl = 3600;
 	}
-	if ($answer) {						# if valid answer
-	  delete $remoteThreads{$id};
-	  $STATs->{"$blist[0]"} += 1;				# bump statistics count
-	  if (exists $CNTs{"$blist[0]"}) {
-	    $CNTs{"$blist[0]"} += 1;
-	  } else {
-	    $CNTs{"$blist[0]"} = 1;
-	    $AVGs{"$blist[0]"} = 1;
-	  }
-	  $newstat = 1;						# notify refresh that update may be needed
-	  my($nmsg,$noff,@dnptrs) = ($FATans)				# make proto answer
-		? _ansrbak($put,$id,$nscount + $arcount +1,$rip,$zone,$type,$ttl,$answer,$BLzone,$myip)
-		: _ansrbak($put,$id,1,$rip,$zone,$type,$ttl,$answer,$BLzone,$myip);
+	if ($answer) {	# if valid answer
+	  my $txt = '';
+	  if (	$csize && 			# caching enabled && answer is from a real DSNBL
+		($answer == A1272 || $answer == A1274 || $answer == A1277) ) {
 
+# ip address      => {
+#         expires =>      time,           now + TTL from response or 3600 minimum
+#         used    =>      time,           time cache item was last used   
+#         who     =>      $blist[0],      which DNSBL caused caching
+#         txt     =>      'string',       txt from our config file or empty
+# },
+	    $txt = $DNSBL->{$blist[0]}->{error} if exists $DNSBL->{$blist[0]};
+	    my $trailer = $notRHBL ? revIP($rip) : '';
+	    $txt = $txt ? $txt . $trailer : '';
+	    $cache{$rip} = {
+		expires => $now + $ttl,		# use responding DNSBL remaining ttl
+		used	=> $now,
+		who	=> $blist[0],
+		txt	=> $txt
+	    };
+	  }		
+	  bump_stats($STATs,$blist[0]);
+#	  $STATs->{"$blist[0]"} += 1;				# bump statistics count
+#	  if (exists $CNTs{"$blist[0]"}) {
+#	    $CNTs{"$blist[0]"} += 1;
+#	  } else {
+#	    $CNTs{"$blist[0]"} = 1;
+#	    $AVGs{"$blist[0]"} = 1;
+#	  }
+#	  $newstat = 1 unless $newstat;					# notify refresh that update may be needed
+
+	  my($nmsg,$noff,@dnptrs) = ($FATans)				# make proto answer
+		? _ansrbak($put,$id,$nscount + $arcount +1,$rip,$zone,$type,$ttl,$answer,$BLzone,$myip,$txt)
+		: _ansrbak($put,$id,1,$rip,$zone,$type,$ttl,$answer,$BLzone,$myip,$txt);
 ## add the ns section from original reply into the authority section so we can see where it came from, it won't hurt anything
   if ($FATans) {
 	  foreach(0..$nscount -1) {
@@ -891,11 +1210,18 @@ sub run {
 	    }
 	  }
   } # end FATans
+# if ANSWER
+	  if ($eXT && exists $eXT->{ANSWER} && $eXT->{ANSWER}->($eXT,$get,$put,$rid,$ttl,\$nmsg,\%remoteThreads)) {
+	    ; # will update $nmsg
+	  }
+	  delete $remoteThreads{$rid};
 	  $msg = $nmsg;
 	  $ROK = 0 if $DEBUG & $D_ANSTOP;
 	}
+# no answer
 	elsif (do {
 		print STDERR '+' if $DEBUG & $D_VERBOSE;
+#print Tmp "While eliminate $rid $blist[0]\n";
 		my $rv = 0;
 		while(!$rv) {
 		  shift @blist;
@@ -907,13 +1233,18 @@ sub run {
 		}
 		$rv;
 	      }) {	# if no more hosts
-	  delete $remoteThreads{$id};
-	  not_found($put,$rip .'.'. $zone,$type,$id,\$msg,$SOAptr);	# send not found response
+# if NOTFOUND
+	  not_found($put,$rip .'.'. $zone,$type,$id,\$msg,$SOAptr)	# send not found response
+		unless $eXT && exists $eXT->{NOTFOUND} && $eXT->{NOTFOUND}->($eXT,$get,$put,$rid,$rip,\$type,\$zone,\$msg,\%remoteThreads);
+	  delete $remoteThreads{$rid};
+# endif
 	  $STATs->{Passed} += 1;
-	  $newstat = 1;							# notify refresh that update may be needed
+	  $newstat = 1 unless $newstat;					# notify refresh that update may be needed
 	} else {
 	  $deadDNSBL{"$blist[0]"} = 1;					# reset retry count
-	  bl_lookup($put,\$msg,\%remoteThreads,$l_Sin,_alarm($blist[0]),$id,$rip,$type,$zone,@blist);
+#print Tmp "NOTFOUND bl_lookup, R \n";
+	  $rid = setURBLdom($rip,$rid,$notRHBL,$ubl,$DNSBL->{$blist[0]},\%remoteThreads,1);	# initialize urbl domain lookup name
+	  bl_lookup($put,\$msg,\%remoteThreads,$l_Sin,_alarm($blist[0]),$rid,$id,$rip,$type,$zone,@blist);
 	  print STDERR $blist[0] if $DEBUG & $D_VERBOSE;
 	  send($R,$msg,0,$R_Sin);					# udp may not block
 	  last;
@@ -932,14 +1263,17 @@ sub run {
     }
 ##################### TIMEOUT, do busywork #######################
     else {							# must be timeout
+      my $prpshadow = $prp;
       $now = time;						# check various alarm status
       unless ($now < $next) {
 	average($STATs);
+	purge_cache() if $prp < 0;		# initiate cache purge every 5 minutes or so
       }
-      foreach $id (keys %remoteThreads) {
-	next unless $remoteThreads{$id}->{expire} < $now;	# expired??
+      purge_cache() unless $prpshadow < 0;	# run cache purge thread unless just initiated
+      foreach $rid (keys %remoteThreads) {
+	next unless $remoteThreads{$rid}->{expire} < $now;	# expired??
 
-	($l_Sin,$rip,$type,$zone,@blist) = @{$remoteThreads{$id}->{args}};
+	($l_Sin,$rip,$id,$type,$zone,@blist) = @{$remoteThreads{$rid}->{args}};
 
 	if (++$deadDNSBL{"$blist[0]"} > $numberoftries) {
 	  $deadDNSBL{"$blist[0]"} = 3600;			# wait an hour to retry
@@ -949,17 +1283,27 @@ sub run {
 	}
 
 	if ($blist[0] eq 'in-addr.arpa') {			# expired reverse DNS lookup ?
-	  delete $remoteThreads{$id};
+	  delete $remoteThreads{$rid};
 	  $deadDNSBL{"$blist[0]"} = 0;				# reset timeout (this one never expires)
-	  $STATs->{"$blist[0]"} += 1;				# bump statistics count
-	  if (exists $CNTs{"$blist[0]"}) {
-	    $CNTs{"$blist[0]"} += 1;
-	  } else {
-	    $CNTs{"$blist[0]"} = 1;
-	    $AVGs{"$blist[0]"} = 1;
-	  }
-	  $newstat = 1;						# notify refresh that update may be needed
-	  ($msg) = _ansrbak($put,$id,1,$rip,$zone,$type,3600,A1274,$BLzone,$myip);
+	  my $txt = exists $DNSBL->{$blist[0]}
+		? $DNSBL->{$blist[0]}->{error}
+		: '';
+	  $cache{$rip} = {
+		expires => $now + 3600,				# always an hour
+		used	=> $now,
+		who	=> $blist[0],
+		txt	=> $txt
+	  };
+	  bump_stats($STATs,$blist[0]);
+#	  $STATs->{"$blist[0]"} += 1;				# bump statistics count
+#	  if (exists $CNTs{"$blist[0]"}) {
+#	    $CNTs{"$blist[0]"} += 1;
+#	  } else {
+#	    $CNTs{"$blist[0]"} = 1;
+#	    $AVGs{"$blist[0]"} = 1;
+#	  }
+#	  $newstat = 1 unless $newstat;				# notify refresh that update may be needed
+	  ($msg) = _ansrbak($put,$id,1,$rip,$zone,$type,3600,A1274,$BLzone,$myip,$txt);
 	  send($L,$msg,0,$l_Sin);
 	  print STDERR " expired Rdns\n" if $DEBUG & $D_VERBOSE;
 	}
@@ -976,14 +1320,18 @@ sub run {
 		}
 		$rv;
 	      }) {	# if no more hosts
-	  delete $remoteThreads{$id};
-	  not_found($put,$rip .'.'. $BLzone,$type,$id,\$msg,$SOAptr);# send not found response
+# if NOTFOUND
+	  not_found($put,$rip .'.'. $BLzone,$type,$id,\$msg,$SOAptr)	# send not found response
+		unless $eXT && exists $eXT->{NOTFOUND} && $eXT->{NOTFOUND}->($eXT,$get,$put,$rid,$rip,\$type,\$BLzone,\$msg,\%remoteThreads);
+	  delete $remoteThreads{$rid};
+# endif
 	  $STATs->{Passed} += 1;				# count messages that pass thru this filter
-	  $newstat = 1;						# notify refresh that update may be needed
+	  $newstat = 1 unless $newstat;				# notify refresh that update may be needed
 	  send($L,$msg,0,$l_Sin);
 	  print STDERR " no bl\n" if $DEBUG & $D_VERBOSE;
 	} else {
-	  bl_lookup($put,\$msg,\%remoteThreads,$l_Sin,_alarm($blist[0]),$id,$rip,$type,$zone,@blist);
+#print Tmp "second NOTFOUND\n";
+	  bl_lookup($put,\$msg,\%remoteThreads,$l_Sin,_alarm($blist[0]),$rid,$id,$rip,$type,$zone,@blist);
 	  send($R,$msg,0,$R_Sin);				# udp may not block
 	  print STDERR $blist[0] if $DEBUG & $D_VERBOSE;
 	}
@@ -993,33 +1341,43 @@ sub run {
       }
       if ($newstat > 1 ||
 	  ($refresh < $now && $newstat)) {			# update stats file
-	write_stats($Sfile,$STATs,$StatStamp);
+	write_stats($Sfile,$STATs,$StatStamp,$csize,$cused);
 	$refresh = $now + $$Run;
 	$newstat = 0;
       }
       return 'caught timer' if $DEBUG & $D_TIMONLY;
     }
   } while($$Run && $ROK);
-  write_stats($Sfile,$STATs,$StatStamp) if $newstat;	# always update on exit if needed
+  write_stats($Sfile,$STATs,$StatStamp,$csize,$cused) if $newstat;	# always update on exit if needed
 }
 
 # answer back prototype
 #
-# input:	$put,$id,$arcount,$rip,$zone,$type,$ttl,$answer,$BLzone
+# input:	$put,$id,$arcount,$rip,$zone,$type,$ttl,$answer,$BLzone,$myip,$withtxt,$CD
 # returns:	$message,$off,@dnptrs
 #
 sub _ansrbak {
-  my($put,$id,$arc,$rip,$zone,$type,$ttl,$ans,$BLzone,$myip) = @_;
+  my($put,$id,$arc,$rip,$zone,$type,$ttl,$ans,$BLzone,$myip,$withtxt,$CD) = @_;
+  my $haveA = ($type == T_A || $type == T_ANY) ? 1 : 0;
+  my $haveT = (($type == T_ANY || $type == T_TXT) && $withtxt) ? 1 : 0;
+  $CD = $CD ? 0 : CD;
   my $nmsg;
+  my $nans = $haveA + $haveT;
   my $noff = newhead(\$nmsg,
 	$id,
 	BITS_QUERY | QR,
-	1,1,1,$arc,
+	1,$nans,1,$arc,
   );
   ($noff,my @dnptrs) = $put->Question(\$nmsg,$noff,	# 1 question
-	$rip .'.'. $zone,$type,C_IN);			# type is T_A or T_ANY
-  ($noff,@dnptrs) = $put->A(\$nmsg,$noff,\@dnptrs,		# 1 answer
+	$rip .'.'. $zone,$type,C_IN);			# type is T_A or T_ANY or T_TXT
+  if ($haveA) {
+    ($noff,@dnptrs) = $put->A(\$nmsg,$noff,\@dnptrs,	# add 1 answer
 	$rip .'.'. $zone,T_A,C_IN,$ttl,$ans);
+  }
+  if ($haveT) {
+    ($noff,@dnptrs) = $put->TXT(\$nmsg,$noff,\@dnptrs,
+	$rip .'.'. $zone,T_TXT,C_IN,$ttl,$withtxt);
+  }
   ($noff,@dnptrs) = $put->NS(\$nmsg,$noff,\@dnptrs,	# 1 authority
 	$zone,T_NS,C_IN,86400,$BLzone);
   ($noff,@dnptrs) = $put->A(\$nmsg,$noff,\@dnptrs,	# 1 additional glue
@@ -1027,7 +1385,7 @@ sub _ansrbak {
   return($nmsg,$noff,@dnptrs)
 }
 
-=item * bl_lookup($put,$mp,$rtp,$sinaddr,$alarm,$id,$rip,$type,$zone,@blist);
+=item * bl_lookup($put,$mp,$rtp,$sinaddr,$alarm,$rid,$id,$rip,$type,$zone,@blist);
 
 Generates a query message for the first DNSBL in the @blist array. Creates
 a thread entry for the response and subsequent queries should the first one fail.
@@ -1037,6 +1395,7 @@ a thread entry for the response and subsequent queries should the first one fail
 		remote thread pointer,
 		sockinaddr,
 		connection timeout,
+		remote id or undef to create
 		id of question,
 		reverse IP address in text
 		type of query received, (used in response)
@@ -1044,14 +1403,29 @@ a thread entry for the response and subsequent queries should the first one fail
 		array of remaining DNSBL's in sorted order
   returns:	nothing, puts stuff in thread queue
 
-=back
+  extra:	if URBL processing is required,
+		$remoteThreads{$rid}->{urbl}
+		is set to the domain to look up
 
 =cut
 
+# This function returns an integer between 1 -> 65535 in a pseudo-random
+# repeatable order. Seeds with $$ by default, can be seeded with any integer;
+#
+
+my $id = $$;
+
+sub uniqueID {
+  $id = $_[0] ? ($_[0] % 65536) : $id;
+  $id = 1 if $id < 1 || $id > 65534;
+  $id++;
+}
+
 sub bl_lookup {
-  my($put,$mp,$rtp,$sinaddr,$alarm,$id,$rip,$type,$zone,@blist) = @_;
+  my($put,$mp,$rtp,$sinaddr,$alarm,$rid,$id,$rip,$type,$zone,@blist) = @_;
+  $rid = uniqueID unless $rid;
   my $off = newhead($mp,
-	$id,
+	$rid,
 	BITS_QUERY | RD,
 	1,0,0,0,
   );
@@ -1062,20 +1436,60 @@ sub bl_lookup {
   my $Qtype = ($blist eq 'in-addr.arpa')
 	? &T_PTR
 	: &T_A;
-  $put->Question($mp,$off,$rip .'.'. $blist,$Qtype,C_IN);
-  $rtp->{$id} = {
-	args	=> [$sinaddr,$rip,$type,$zone,@blist],
-	expire	=> time + $alarm,
-  };
+
+# send conditioned URBL request if that is what is needed
+  if ($rtp->{$rid}->{urbl}) {
+    $put->Question($mp,$off,$rtp->{$rid}->{urbl}.'.'. $blist,$Qtype,C_IN);
+  } else {
+    $put->Question($mp,$off,$rip .'.'. $blist,$Qtype,C_IN);
+  }
+  $rtp->{$rid} = {} unless exists $rtp->{$rid};
+  $rtp->{$rid}->{args}   = [$sinaddr,$rip,$id,$type,$zone,@blist];
+  $rtp->{$rid}->{expire} = time + $alarm;
+#print Tmp "$blist => ",Dumper($rtp);
+}
+
+=item * set_extension($pointer);
+
+This function sets a pointer to user defined extensions to
+Net::DNSBL::MultiDaemon.
+
+Pointer is of the form:
+
+	$Extension ->{
+		OPCODE	 => value,
+		CLASS	 => subref->($Extension,internal args),
+		NAME	 => subref->($Extension,internal args),
+		TYPE	 => subref->($Extension,internal args),
+		LOOKUP	 => subref->($Extension,internal args),
+		ANSWER	 => subref->($Extension,internal args),
+		NOTFOUND => subref->($Extension,internal args)
+	};
+
+The pointer should be blessed into the package of the caller if the calling
+package needs to store persistant variables for its own instance. The subref
+will be called with the first argument of $Extension.
+
+Care should be taken to NOT instantiate a %remoteThreads in the CLASS, NAME,
+TYPE section unless it is know that it will be found and expired/deleted.
+
+Read the code if you wish to add an extension
+
+=back
+
+=cut
+
+sub set_extension {
+  $eXT = shift;
 }
 
 =head1 DEPENDENCIES
 
-	Unix::Syslog
-	Geo::IP::PurePerl
-	NetAddr::IP
-	Net::DNS::Codes
-	Net::DNS::ToolKit
+  Unix::Syslog
+  Geo::IP::PurePerl [conditional for country codes]
+  NetAddr::IP
+  Net::DNS::Codes
+  Net::DNS::ToolKit
 
 =head1 EXPORT_OK
 
@@ -1100,11 +1514,11 @@ Michael Robinton, michael@bizsystems.com
 
 =head1 COPYRIGHT
 
-Copyright 2003 - 2010, Michael Robinton & BizSystems
+Copyright 2003 - 2013, Michael Robinton & BizSystems
 This program is free software; you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation; either version 2 of the License, or 
-(at your option) any later version.
+it under the terms as Perl itself or the GNU General Public License 
+as published by the Free Software Foundation; either version 2 of 
+the License, or  (at your option) any later version.
 
 This program is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of 
@@ -1117,7 +1531,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
 =head1 SEE ALSO
 
-L<Net::DNSBL::Utilities>, L<Net::DNS::Codes>, L<Net::DNS::ToolKit>, L<Mail::SpamCannibal>
+L<URBL::Prepare>, L<Geo::IP::PurePerl>, L<Net::DNSBL::Utilities>, L<Net::DNS::Codes>, L<Net::DNS::ToolKit>, L<Mail::SpamCannibal>
 
 =cut
 

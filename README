@@ -6,10 +6,11 @@ SYNOPSIS
             :debug
             run
             bl_lookup  
+            set_extension
       );
 
       run($BLzone,$L,$R,$DNSBL,$STATs,$Run,$Sfile,$StatStamp,$DEBUG)
-      bl_lookup($put,$mp,$rtp,$sinaddr,$alarm,$id,$rip,$type,$zone,@blist);
+      bl_lookup($put,$mp,$rtp,$sinaddr,$alarm,$rid,$id,$rip,$type,$zone,@blist);
 
 DESCRIPTION
     Net::DNSBL::MultiDaemon is the Perl module that implements the
@@ -136,6 +137,8 @@ INSTALLATION / CONFIGURATION / OPERATION
       MDstatrefresh => 300,       # seconds
       MDipaddr      => '0.0.0.0', # PROBABLY NOT WHAT YOU WANT
       MDport        => 9953,
+      MDcache       => 10000,     # an entry takes ~400 bytes
+                                  # default 10000 (to small)
   
     ### WARNING ### failure to set MDipaddr to a valid ip address will
     result in the authority section return an NS record of INADDR_ANY This
@@ -237,7 +240,7 @@ PERL MODULE DESCRIPTION
           A pointer to a UDP listener object
 
         * $R
-          A pointer to a unbound UDP socket used for interogation an
+          A pointer to a unbound UDP socket used for interogation and
           receiving replies for the multiple DNSBL's
 
         * $DNSBL
@@ -262,6 +265,24 @@ PERL MODULE DESCRIPTION
                   '127.0.0.0/8',  # ignore all test entries and localhost
                   ],
 
+              # Do rhbl lookups only, default false
+              # all other rejection classes are disabled, IGNORE, BLOCK, BBC, in-addr.arpa
+              # RHBL need only be "true" for operation. If OPTIONAL URBL conditioning
+              # is needed, then the parameters in the has must be added
+                  RHBL    => {    # optional URBL preparation
+                          urblwhite => [
+                                  'path/to/local/file',
+                                  'path/to/local/file'    # local whitelist
+                          ],
+              # NOTE: level 3 tld's should be first before level 2 tld's,
+              # local blacklist last
+                          urbltlds  => [
+                                  'path/to/local/file',   # level 3 tld's
+                                  'path/to/local/file',   # level 2 tld's
+                                  'path/to/local/file'    # local blacklist
+                          ],
+                  },
+
               # Authoratative answers
                   'AUTH'  => 0,
 
@@ -280,12 +301,20 @@ PERL MODULE DESCRIPTION
 
               # RBL zones as follows: OPTIONAL
                   'domain.name' => {
+              # mark this dnsbl to require right hand side domain processing
+              # requires URBL::Prepare
+          # NOT IMPLEMENTED
+          #           urbl        => 1,
                       acceptany   => 'comment - treat any response as valid',
               # or
                       accept      => {
                           '127.0.0.2' => 'comment',
                           '127.0.0.3' => 'comment',
                       },
+              # or
+              # mask the low 8 bits and accept any true result
+                      acceptmask  => 0x3D,        # accepts 0011 1101
+
             #         timeout     => 30,  # default seconds to wait for dnsbl
                   },
 
@@ -303,6 +332,10 @@ PERL MODULE DESCRIPTION
             # syslog. Specify the facility, one of: 
             # LOG_EMERG LOG_ALERT LOG_CRIT LOG_ERR LOG_WARNING LOG_NOTICE LOG_INFO LOG_DEBUG
             #     MDsyslog        => 'LOG_WARNING',
+            #
+            #     cache lookups using the TTL of the providing DNSBL
+            #     each cache entry takes about 400 bytes, minimum size = 1000
+            #     MDcache         => 1000,      # 1000 is too small
             };
 
           Zone labels that are not of the form *.*... are ignored, making
@@ -343,7 +376,9 @@ PERL MODULE DESCRIPTION
           Normally the value returned by statinit($Sfile,$cp) the
           Net::DNSBL::Utilities manpage/statinit, below.
 
-    * bl_lookup($put,$mp,$rtp,$sinaddr,$alarm,$id,$rip,$type,$zone,@blist);
+    *
+    bl_lookup($put,$mp,$rtp,$sinaddr,$alarm,$rid,$id,$rip,$type,$zone,@blist
+    );
         Generates a query message for the first DNSBL in the @blist array.
         Creates a thread entry for the response and subsequent queries
         should the first one fail.
@@ -353,6 +388,7 @@ PERL MODULE DESCRIPTION
                         remote thread pointer,
                         sockinaddr,
                         connection timeout,
+                        remote id or undef to create
                         id of question,
                         reverse IP address in text
                         type of query received, (used in response)
@@ -360,12 +396,43 @@ PERL MODULE DESCRIPTION
                         array of remaining DNSBL's in sorted order
           returns:      nothing, puts stuff in thread queue
 
+          extra:        if URBL processing is required,
+                        $remoteThreads{$rid}->{urbl}
+                        is set to the domain to look up
+
+    * set_extension($pointer);
+        This function sets a pointer to user defined extensions to
+        Net::DNSBL::MultiDaemon.
+
+        Pointer is of the form:
+
+                $Extension ->{
+                        OPCODE   => value,
+                        CLASS    => subref->($Extension,internal args),
+                        NAME     => subref->($Extension,internal args),
+                        TYPE     => subref->($Extension,internal args),
+                        LOOKUP   => subref->($Extension,internal args),
+                        ANSWER   => subref->($Extension,internal args),
+                        NOTFOUND => subref->($Extension,internal args)
+                };
+
+        The pointer should be blessed into the package of the caller if the
+        calling package needs to store persistant variables for its own
+        instance. The subref will be called with the first argument of
+        $Extension.
+
+        Care should be taken to NOT instantiate a %remoteThreads in the
+        CLASS, NAME, TYPE section unless it is know that it will be found
+        and expired/deleted.
+
+        Read the code if you wish to add an extension
+
 DEPENDENCIES
-            Unix::Syslog
-            Geo::IP::PurePerl
-            NetAddr::IP
-            Net::DNS::Codes
-            Net::DNS::ToolKit
+      Unix::Syslog
+      Geo::IP::PurePerl [conditional for country codes]
+      NetAddr::IP
+      Net::DNS::Codes
+      Net::DNS::ToolKit
 
 EXPORT_OK
             run
@@ -386,11 +453,11 @@ AUTHOR
     Michael Robinton, michael@bizsystems.com
 
 COPYRIGHT
-    Copyright 2003 - 2010, Michael Robinton & BizSystems This program is
+    Copyright 2003 - 2013, Michael Robinton & BizSystems This program is
     free software; you can redistribute it and/or modify it under the terms
-    of the GNU General Public License as published by the Free Software
-    Foundation; either version 2 of the License, or (at your option) any
-    later version.
+    as Perl itself or the GNU General Public License as published by the
+    Free Software Foundation; either version 2 of the License, or (at your
+    option) any later version.
 
     This program is distributed in the hope that it will be useful, but
     WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -402,6 +469,7 @@ COPYRIGHT
     59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
 SEE ALSO
-    the Net::DNSBL::Utilities manpage, the Net::DNS::Codes manpage, the
+    the URBL::Prepare manpage, the Geo::IP::PurePerl manpage, the
+    Net::DNSBL::Utilities manpage, the Net::DNS::Codes manpage, the
     Net::DNS::ToolKit manpage, the Mail::SpamCannibal manpage
 

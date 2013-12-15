@@ -5,7 +5,7 @@
 # Change 1..1 below to 1..last_test_to_print .
 # (It may become useful if the test is moved to ./t subdirectory.)
 
-BEGIN { $| = 1; print "1..12\n"; }
+BEGIN { $| = 1; print "1..13\n"; }
 END {print "not ok 1\n" unless $loaded;}
 
 use Net::DNSBL::MultiDaemon qw(
@@ -73,7 +73,7 @@ sub chk_exp {
 }
 
 #####
-##### testing - bl_lookup($put,$mp,$rtp,$sinaddr,$alarm,$id,$rip,$type,@blist);
+##### testing - bl_lookup($put,$mp,$rtp,$sinaddr,$alarm,$rid,$id,$rip,$type,@blist);
 #####
 
 my($get,$put,$parse) = new Net::DNS::ToolKit::RR;
@@ -88,12 +88,13 @@ my $sinaddr = 'known text';
 my $zone = 'once.upon.a.time.com';
 my $alarm = 55;
 my $revIP = '4.3.2.1';
-my $id = 65432;
+my $rid = 65432;
+my $id = 12345;
 my $type = T_AXFR;		# just for the heck of it
 
 ##	generate initial buffer
 my $aval = next_sec() + $alarm;
-bl_lookup($put,\$buf,\%threads,$sinaddr,$alarm,$id,$revIP,$type,$zone,@bldomains);
+bl_lookup($put,\$buf,\%threads,$sinaddr,$alarm,$rid,$id,$revIP,$type,$zone,@bldomains);
 
 ## test 2	verify threads
 print "more than one thread\nnot "
@@ -102,8 +103,8 @@ print "more than one thread\nnot "
 
 ## test 3	verify threads content key
 @_ = %threads;
-print "bad key, got: $_, exp: $id\nnot "
-	unless $_[0] == $id;
+print "bad key, got: $_, exp: $rid\nnot "
+	unless $_[0] == $rid;
 &ok;
 
 ## test 4	verify thread sinaddr
@@ -118,27 +119,32 @@ print "thread revIP mismatch, got: $_, exp: $revIP\nnot "
 
 ## test 6	verify thread type
 print "thread type mismatch, got: $_, exp: $type\nnot "
-	unless ($_ = ${$_[1]->{args}}[2]) == $type;
+	unless ($_ = ${$_[1]->{args}}[3]) == $type;
 &ok;
 
 ## test 7	verify thread zone
 print "thread zone mismatch, got: $_, exp: $zone\nnot "
-	unless ($_ = ${$_[1]->{args}}[3]) eq $zone;
+	unless ($_ = ${$_[1]->{args}}[4]) eq $zone;
 &ok;
 
-## test 8-10	verify bl domains
+## test 8	verify thread original id
+print "thread oid mismatch, got: $_, exp $id\nnot "
+	unless ($_ = ${$_[1]->{args}}[2]) == $id;
+&ok;
+
+## test 9-11	verify bl domains
 foreach(0..$#bldomains) {
-  print "thread bldomain mismatch, got: ". ${$_[1]->{args}}[4+$_] ." exp: $bldomains[$_]\nnot "
-	unless ${$_[1]->{args}}[4+$_] eq $bldomains[$_];
+  print "thread bldomain mismatch, got: ". ${$_[1]->{args}}[5+$_] ." exp: $bldomains[$_]\nnot "
+	unless ${$_[1]->{args}}[5+$_] eq $bldomains[$_];
   &ok;
 }
 
-## test 11	verify alarm value
+## test 12	verify alarm value
 print "alarm mismatch, got: $_, exp: $aval\nnot "
 	unless $_[1]->{expire} == $aval;
 &ok;
 
-## test 12	verify question content
+## test 13	verify question content
 my $expected = q|
   0     :  1111_1111  0xFF  255    
   1     :  1001_1000  0x98  152    

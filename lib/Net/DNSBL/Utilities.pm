@@ -19,7 +19,7 @@ use AutoLoader 'AUTOLOAD';
 require Exporter;
 @ISA = qw(Exporter);
 
-$VERSION = do { my @r = (q$Revision: 0.09 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
+$VERSION = do { my @r = (q$Revision: 0.10 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
 
 *DO = \&File::SafeDO::DO;
 *doINCLUDE = \&File::SafeDO::doINCLUDE;
@@ -105,7 +105,7 @@ Net::DNSBL::Utilities - functions for DNSBL daemons
 
   s_response($mp,$resp,$id,$qdcount,$ancount,$nscount,$arcount);
   not_found($put,$name,$type,$id,$mp,$srp);
-  write_stats($sfile,$cp,$sinit);
+  write_stats($sfile,$cp,$sinit,$csize,$cache);
   $rv = bystat($cp);
   $timestamp = statinit($Sfile,$cp);
   cntinit($DNSBL,$cp);
@@ -183,23 +183,28 @@ sub not_found {
   $put->SOA($mp,$off,\@dnptrs,@$srp);
 }
 
-=item * write_stats($sfile,$cp,$sinit);
+=item * write_stats($sfile,$cp,$sinit,$csize,$cache);
 
 Write out the contents of the accumulated statistics buffer to the STATs file.
 
   input:	statistics file path,
 		pointer to count hash,
 		initial timestamp line text
+		cache flag/max size
+		current cache size
   returns:	nothing
 
 =cut
 
 sub write_stats {
-  my($sfile,$cp,$sinit) = @_;
+  my($sfile,$cp,$sinit,$csize,$cache) = @_;
   if ($sfile) {         # record sfile on DNSBL lookups
     if (open(S,'>'. $sfile .'.tmp')) {
       print S '# last update '. localtime(time) ."\n";
       print S $sinit;
+      if ($csize) {	# if cacheing
+	print S "# cache allocated: $csize, used: $cache\n";
+      }
       my $total = 0;
       foreach(sort {
 		bystat($cp); 

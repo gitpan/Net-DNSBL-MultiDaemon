@@ -74,8 +74,8 @@ print "missing configuration file variables domain1.com, domain2.net\nnot "
 &ok;
 
 my $Dkeys = keys %$DNSBLS;
-print "got: $Dkeys, exp: 4, bad key count\nnot "
-	unless $Dkeys == 4;
+print "got: $Dkeys, exp: 5, bad key count\nnot "
+	unless $Dkeys == 5;
 &ok;
 
 ## test 5	generate count stats hash

@@ -1,5 +1,29 @@
 Revision history for Perl extension Net::DNSBL::MultiDaemon
 
+0.35  Fri Dec 13 18:07:14 PST 2013
+	fixed wrap around flaw in uniqueID()
+	add cache load for URBL Prepare tld's and white list
+
+0.34  Fri Jun 14 17:34:49 PDT 2013
+	add 'acceptmask' to RBL paramaters
+	add conditional URBL lookup conditioning
+
+0.33	Wed May 29 12:37:20 PDT 2013
+	made Geo::IP::PurePerl conditional with warning
+
+0.32  Mon Apr 29 19:40:55 PDT 2013
+	...not released...
+	add unique ID for remote DNS lookup instead of
+	using ID of question
+
+0.31  Sun Apr 28 08:01:28 PDT 2013	NOT RELEASED
+	Added RHBL functionality, add user defined Extensions
+
+0.30  Sun Oct 17 17:00:42 PDT 2010
+	Added optional caching for done to remote DNSBLs. Cache uses 
+	TTL of returned record (3600 in the case of in-addr.arpa PTR 
+	timeout). Cache size is variable and can be set by user.
+
 0.29  Sat Mar  6 13:53:45 PST 2010
 	Change SOA to return zone name instead of 'localhost' so that
 	stand alone operation returns the correct NS record

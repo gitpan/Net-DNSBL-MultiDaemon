@@ -14,8 +14,8 @@ END { print "not ok 1\n" unless $loaded; }
 ok(@_ = &Net::DNS::ToolKit::get_ns(),'find resolver');
 
 if (@_) {
-  print STDERR "\n";
   foreach (@_) {
-    print STDERR 'found nameserver ', &Net::DNS::ToolKit::inet_ntoa($_), "\n";
+    print STDERR "\nfound nameserver ", &Net::DNS::ToolKit::inet_ntoa($_);
   }
+  print STDERR "\n";
 }

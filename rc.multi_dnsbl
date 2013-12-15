@@ -100,8 +100,8 @@ my ($DNSBL,%STATS,$StatStamp,$pidfile,$RUN,$pid);
 local $SIG{HUP} = sub {$RUN = 0; $command = 'received sig HUP'};
 local $SIG{TERM} = sub {$RUN = 0; $command = 'exiting... sig TERM'};
 
-$0 =~ m|[^/]+$|;
-my $me = $&;		# script name
+$0 =~ m|([^/]+)$|;
+my $me = $1;		# script name
 $me =~ s/rc\.//;
 $0 = $me;
 

@@ -194,6 +194,7 @@ my $runval;
 *Net::DNSBL::MultiDaemon::R_Sin = \scalar sockaddr_in($t1port,inet_aton('127.0.0.1'));
 
 ## test 11-14	do a good zone lookup, send request
+uniqueID(12344);
 my $off = newhead(\$msg,
         12345,
         BITS_QUERY,
@@ -319,6 +320,7 @@ chk_exp(\$msg,\$expectxt);
 ####
 
 sub setup {
+  uniqueID(12344);		# preset remote id to match id
   my ($mp) = @_;
   my $off = newhead($mp,
         12345,

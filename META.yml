@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:                Net-DNSBL-MultiDaemon
-version:             0.29
+version:             0.35
 abstract:            ~
 license:             ~
 author:              ~
@@ -8,10 +8,10 @@ generated_by:        ExtUtils::MakeMaker version 6.42
 distribution_type:   module
 requires:     
     File::SafeDO:                  0.12
-    Geo::IP::PurePerl:             1.1
     Net::DNS::Codes:               0.09
-    Net::DNS::ToolKit:             0.41
-    NetAddr::IP:                   4.015
+    Net::DNS::ToolKit:             0.47
+    Net::NBsocket:                 0.23
+    NetAddr::IP:                   4.067
     Test::More:                    0
     Unix::Syslog:                  0.97
 meta-spec:

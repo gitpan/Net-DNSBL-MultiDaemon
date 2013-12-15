@@ -468,20 +468,16 @@ print $@, "\nnot "
 &ok;
 
 ## test 17	read message back in 'run'
-require Geo::IP::PurePerl;
 
-eval {
-  my $x = new Geo::IP::PurePerl;
-};
+eval { require Geo::IP::PurePerl };
 
 if ($@) {
-  print "ok $test # Skipped, failed to load Geo::IP::PurePerl\n";
+  print "ok $test # Skipped, \tGeo::IP::PurePerl is not installed, BBC service unavailable\n";
   ++$test;
-  print "ok $test # Skipped\n";
+  print "ok $test # Skipped, \tGeo::IP::PurePerl is not installed, BBC service unavailable\n";
   ++$test;
-  print "ok $test # Skipped\n";
+  print "ok $test # Skipped, \tGeo::IP::PurePerl is not installed, BBC service unavailable\n";
   ++$test;
-  print STDERR " WARNING! Geo::IP::PurePerl database appears to be missing\n";
 } else {
   $DNSBL->{BBC} = ['US'];
 

@@ -5,6 +5,40 @@ my $pkg = 'Net::DNSBL::MultiDaemon';
 $pkg =~ /[^:]+$/;
 my $module = $& .'.pm';
 
+my $now = time;
+my $then = (stat('./Makefile.old'))[9] || 0;
+# set number of seconds to view
+my $view = $then +86400 < $now ? 5:0;
+
+my $doview = 0;
+unless (eval {
+	require Geo::IP::PurePerl &&
+	$Geo::IP::PurePerl::VERSION >= 1.10
+	} ) {
+  print q|
+Geo::IP::PurePerl v1.10 or greater is required if you
+want to use Country Codes to reject connections.
+Net::DNSBL::MultiDaemon will run without this module
+but will not provide Block Country Code service.
+
+|;
+  $doview = 1;
+}
+
+unless (eval {
+	require URBL::Prepare
+	} ) {
+  print q|
+URBL::Prepare is required if you want to do RHBL 
+checking of URBL domains.
+Net::DNSBL::MultiDaemon will run without this 
+module but will not provide URBL lookups
+
+|;
+  $doview = 1;
+}
+sleep $view if $doview && $view;
+
 WriteMakefile(
     'NAME'		=> $pkg,
     'VERSION_FROM'	=> $module, # finds $VERSION
@@ -12,10 +46,10 @@ WriteMakefile(
 				Test::More		=> 0,
 				File::SafeDO		=> 0.12,
 				Net::DNS::Codes		=> 0.09,
-				Net::DNS::ToolKit	=> 0.41,
+				Net::DNS::ToolKit	=> 0.47,
 				Unix::Syslog		=> 0.97,
-				NetAddr::IP		=> 4.015,
-				Geo::IP::PurePerl	=> 1.10,
+				NetAddr::IP		=> 4.067,
+				Net::NBsocket		=> 0.23,
 			},
     'clean'		=> { FILES    => "*~ tmp*"},
     'dist'		=> {COMPRESS=>'gzip', SUFFIX=>'gz'}
