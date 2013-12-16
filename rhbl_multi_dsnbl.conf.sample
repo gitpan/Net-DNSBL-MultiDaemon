@@ -72,11 +72,13 @@ my $DNSBL = {
 		'/path/to/cached/whitefile',
 		'/path/to/local/file'	# see format of spamassassin file
 	],
+	urblblack => [
+		'/path/to/local/blacklist'
+	],
 # NOTE: level 3 tld's should be first before level 2 tld's
 	urbltlds  => [
 		'/path/to/cached/tld3file',
-		'/path/to/cached/tld2file',
-		'/path/to/local/blacklist'
+		'/path/to/cached/tld2file'
 	],
 	urlwhite  => [
 		'http://spamassasin.googlecode.com/svn-history/r6/trunk/share/spamassassin/25_uribl.cf',
@@ -91,7 +93,6 @@ my $DNSBL = {
 		'/path/to/cached/tld2file'
 	],
   },
-
 
 # FOR A COMPREHENSIVE LIST OF ALL DNSBL ZONES, SEE:
 #	http://www.openrbl.org

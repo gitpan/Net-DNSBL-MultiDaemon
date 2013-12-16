@@ -270,17 +270,30 @@ PERL MODULE DESCRIPTION
               # RHBL need only be "true" for operation. If OPTIONAL URBL conditioning
               # is needed, then the parameters in the has must be added
                   RHBL    => {    # optional URBL preparation
-                          urblwhite => [
-                                  'path/to/local/file',
-                                  'path/to/local/file'    # local whitelist
-                          ],
-              # NOTE: level 3 tld's should be first before level 2 tld's,
-              # local blacklist last
-                          urbltlds  => [
-                                  'path/to/local/file',   # level 3 tld's
-                                  'path/to/local/file',   # level 2 tld's
-                                  'path/to/local/file'    # local blacklist
-                          ],
+                    urblwhite => [
+                          '/path/to/cached/whitefile',
+                          '/path/to/local/file'   # see format of spamassassin file
+                    ],
+                    urblblack => [
+                          '/path/to/local/blacklist'
+                    ],
+          # NOTE: level 3 tld's should be first before level 2 tld's
+                    urbltlds  => [
+                          '/path/to/cached/tld3file',
+                          '/path/to/cached/tld2file'
+                    ],
+                    urlwhite  => [
+                          'http://spamassasin.googlecode.com/svn-history/r6/trunk/share/spamassassin/25_uribl.cf',
+                          '/path/to/cached/whitefile'
+                    ],
+                    urltld3   => [
+                          'http://george.surbl.org/three-level-tlds',
+                          '/path/to/cached/tld3file'
+                    ],
+                    urltld2   => [
+                          'http://george.surbl.org/two-level-tlds',
+                          '/path/to/cached/tld2file'
+                    ],
                   },
 
               # Authoratative answers

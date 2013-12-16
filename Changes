@@ -1,5 +1,11 @@
 Revision history for Perl extension Net::DNSBL::MultiDaemon
 
+0.37  Sun Dec 15 18:33:24 PST 2013
+	add cache loading for blacklist file(s)
+
+0.36  Sun Dec 15 09:42:22 PST 2013
+	add white/black list checking to !$notRHBL
+
 0.35  Fri Dec 13 18:07:14 PST 2013
 	fixed wrap around flaw in uniqueID()
 	add cache load for URBL Prepare tld's and white list

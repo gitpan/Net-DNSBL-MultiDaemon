@@ -11,12 +11,15 @@ my $then = (stat('./Makefile.old'))[9] || 0;
 my $view = $then +86400 < $now ? 5:0;
 
 my $doview = 0;
+
+my $GeoVersion = 1.10;
+
 unless (eval {
 	require Geo::IP::PurePerl &&
-	$Geo::IP::PurePerl::VERSION >= 1.10
+	$Geo::IP::PurePerl::VERSION >= $GeoVersion
 	} ) {
   print q|
-Geo::IP::PurePerl v1.10 or greater is required if you
+Geo::IP::PurePerl |. $GeoVersion .q| or greater is required if you
 want to use Country Codes to reject connections.
 Net::DNSBL::MultiDaemon will run without this module
 but will not provide Block Country Code service.
@@ -25,12 +28,15 @@ but will not provide Block Country Code service.
   $doview = 1;
 }
 
+my $URBLVersion = 0.08;
+
 unless (eval {
-	require URBL::Prepare
+	require URBL::Prepare &&
+	$URBL::Prepare::VERSION >= $URBLVersion
 	} ) {
   print q|
-URBL::Prepare is required if you want to do RHBL 
-checking of URBL domains.
+URBL::Prepare |. $URBLVersion .q| or greater is required if you
+want to do RHBL checking of URBL domains.
 Net::DNSBL::MultiDaemon will run without this 
 module but will not provide URBL lookups
 

@@ -20,7 +20,7 @@ $D_NOTME     = 0x10; # return received response not for me
 $D_ANSTOP    = 0x20; # clear run OK flag if ANSWER present
 $D_VERBOSE   = 0x40; # verbose debug statements to STDERR
 
-$VERSION = do { my @r = (q$Revision: 0.35 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
+$VERSION = do { my @r = (q$Revision: 0.37 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
 
 @EXPORT_OK = qw(
         run
@@ -397,19 +397,32 @@ A pointer to the configuration hash of the form:
     # all other rejection classes are disabled, IGNORE, BLOCK, BBC, in-addr.arpa
     # RHBL need only be "true" for operation. If OPTIONAL URBL conditioning
     # is needed, then the parameters in the has must be added
-    	RHBL 	=> {	# optional URBL preparation
-		urblwhite => [
-			'path/to/local/file',
-			'path/to/local/file'	# local whitelist
-		],
-    # NOTE: level 3 tld's should be first before level 2 tld's,
-    # local blacklist last
-		urbltlds  => [
-			'path/to/local/file',	# level 3 tld's
-			'path/to/local/file',	# level 2 tld's
-			'path/to/local/file'	# local blacklist
-		],
-	},
+	RHBL 	=> {	# optional URBL preparation
+	  urblwhite => [
+		'/path/to/cached/whitefile',
+		'/path/to/local/file'	# see format of spamassassin file
+	  ],
+	  urblblack => [
+		'/path/to/local/blacklist'
+	  ],
+# NOTE: level 3 tld's should be first before level 2 tld's
+	  urbltlds  => [
+		'/path/to/cached/tld3file',
+		'/path/to/cached/tld2file'
+	  ],
+	  urlwhite  => [
+		'http://spamassasin.googlecode.com/svn-history/r6/trunk/share/spamassassin/25_uribl.cf',
+		'/path/to/cached/whitefile'
+	  ],
+	  urltld3   => [
+		'http://george.surbl.org/three-level-tlds',
+		'/path/to/cached/tld3file'
+	  ],
+	  urltld2   => [
+		'http://george.surbl.org/two-level-tlds',
+		'/path/to/cached/tld2file'
+	  ],
+  	},
 
     # Authoratative answers
 	'AUTH'	=> 0,
@@ -696,26 +709,34 @@ sub purge_cache {
 #		remote ID
 #		notRHBL
 #		ubl method pointer
-#		blacklist array pointer
+#		blacklist host array pointer UNUSED
 #		remoteThreads ptr
-# return:	$rid
-#
+# return:
+#    SCALAR	$rid
+#    ARRAY	($rid,$whitelistedDomain,$SURBLookupDomain)
+#			or false		or false
+
+# $bap is unused
+
 sub setURBLdom {
   my($rip,$rid,$notRHBL,$ubl,$bap,$rtp,$n) = @_;
-  return $rid if $notRHBL;		# don't even need to check
-  return $rid unless $ubl;		# URBL::Prepare not loaded
+  if ($notRHBL || ! $ubl) {		# don't even need to check
+    return wantarray ? ($rid) : $rid;	# or URBL::Prepare not loaded
+  }
   $rid = uniqueID() unless $rid;	# set $rid if it is empty
   $rtp->{$rid} = {} unless exists $rtp->{$rid};
+
   my $domain = '';
-  if ($bap->{urbl} &&	# urbl domain conversion needed for this RHBL?
-      ($domain = $ubl->urbldomain($rip))) {
-     $rtp->{$rid}->{urbl} = $domain;
-  } else {
-    $rtp->{$rid}->{urbl} = '';
+  my $white	= $ubl->urblwhite($rip);
+  unless ($white) {
+    $domain = $ubl->urbldomain($rip);
   }
-  $rtp->{$rid}->{N}= $n;
-  $rid;
+
+  $rtp->{$rid}->{urbl}	= $domain;
+  $rtp->{$rid}->{N}	= $n;
+  return wantarray ? ($rid,$white,$domain) : $rid;
 }
+
 sub run {
   my ($BLzone,$L,$R,$DNSBL,$STATs,$Run,$Sfile,$StatStamp,$DEBUG) = @_;
 #open(Tmp,'>>/tmp/multidnsbl.log');
@@ -778,8 +799,9 @@ sub run {
   if ($DNSBL->{RHBL}) {
     $notRHBL = 0;
     if (ref $DNSBL->{RHBL} && 
-	((exists $DNSBL->{RHBL}->{urbltlds} && ref($DNSBL->{RHBL}->{urbltlds}) eq 'ARRAY') ||
-	 (exists $DNSBL->{RHBL}->{urblwhite} && ref($DNSBL->{RHBL}->{urblwhite}) eq 'ARRAY')) &&
+	((exists $DNSBL->{RHBL}->{urbltlds}  && ref($DNSBL->{RHBL}->{urbltlds})  eq 'ARRAY') ||
+	 (exists $DNSBL->{RHBL}->{urblwhite} && ref($DNSBL->{RHBL}->{urblwhite}) eq 'ARRAY') ||
+	 (exists $DNSBL->{RHBL}->{urblblack} && ref($DNSBL->{RHBL}->{urblblack}) eq 'ARRAY')) &&
 	eval {
 		no warnings;
 		require URBL::Prepare;
@@ -790,13 +812,14 @@ sub run {
 	$ubl->loadcache(@{$DNSBL->{RHBL}->{urlwhite}});		# cache whitelist file
       }
       if (exists $DNSBL->{RHBL}->{urltld3} && ref($DNSBL->{RHBL}->{urltld3}) eq 'ARRAY') {
-	$ubl->loadcache(@{$DNSBL->{RHBL}->{urltld3}});		# cache tld3 blacklist file
+	$ubl->loadcache(@{$DNSBL->{RHBL}->{urltld3}});		# cache tld3 file
       }
       if (exists $DNSBL->{RHBL}->{urltld2} && ref($DNSBL->{RHBL}->{urltld2}) eq 'ARRAY') {
-	$ubl->loadcache(@{$DNSBL->{RHBL}->{urltld2}});		# cache tld2 blacklist file
+	$ubl->loadcache(@{$DNSBL->{RHBL}->{urltld2}});		# cache tld2 file
       }
       $ubl->cachetlds($DNSBL->{RHBL}->{urbltlds});
       $ubl->cachewhite($DNSBL->{RHBL}->{urblwhite});
+      $ubl->cacheblack($DNSBL->{RHBL}->{urblblack});
     }
   } else {
     $notRHBL = 1;
@@ -956,6 +979,21 @@ sub run {
 # if CACHE
 	      if ($eXT && exists $eXT->{CACHE} && (my $rv = $eXT->{CACHE}->($eXT,$get,$put,$id,$opcode,$rip,\$name,\$type,\$class,$ubl))) {
 		$msg = $rv;
+	      }
+# if local white/black lists
+	      elsif (!$notRHBL && $ubl && 		# right side checking and local white/black lists
+		  do {
+			if ($ubl->urblwhite($rip)) {
+			  not_found($put,$name,$type,$id,\$msg,$SOAptr);
+			  $rv = 'whitelisted';
+			}
+			elsif ($ubl->urblblack($rip)) {
+			  ($msg) = _ansrbak($put,$id,1,$rip,$zone,$type,3600,A1272,$BLzone,$myip,'blacklisted');
+			  $rv = 'blacklisted';
+			}
+		  }
+	      ) {
+		  $comment = $rv;
 	      }
 	      elsif ($rip eq '2.0.0.127') {				# checkfor DNSBL test
 		($msg) = _ansrbak($put,$id,1,$rip,$zone,$type,3600,A1272,$BLzone,$myip,'DNSBL test response to 127.0.0.2');
