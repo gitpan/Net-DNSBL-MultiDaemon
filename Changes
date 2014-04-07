@@ -1,5 +1,8 @@
 Revision history for Perl extension Net::DNSBL::MultiDaemon
 
+0.39  Mon Apr  7 16:14:14 PDT 2014
+	tighten checks on ipV4 address specs
+
 0.38  Mon Jan 27 11:59:58 PST 2014
         modify Makefile.PL to bypass missing 'pod2text'
 

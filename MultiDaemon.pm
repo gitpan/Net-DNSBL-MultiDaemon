@@ -20,7 +20,7 @@ $D_NOTME     = 0x10; # return received response not for me
 $D_ANSTOP    = 0x20; # clear run OK flag if ANSWER present
 $D_VERBOSE   = 0x40; # verbose debug statements to STDERR
 
-$VERSION = do { my @r = (q$Revision: 0.38 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
+$VERSION = do { my @r = (q$Revision: 0.39 $ =~ /\d+/g); sprintf "%d."."%02d" x $#r, @r };
 
 @EXPORT_OK = qw(
         run
@@ -963,7 +963,7 @@ sub run {
 	    $type == T_ANY ||
 	    $type == T_TXT) {
 	    if (( $notRHBL &&
-		  $name =~ /^((\d+)\.(\d+)\.(\d+)\.(\d+))\.(.+)/ &&
+		  $name =~ /^((\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3}))\.(.+)/ &&
 		  ($rip = $1) &&
 		  ($targetIP = "$5.$4.$3.$2") &&
 		  ($zone = $6) &&
@@ -1127,7 +1127,7 @@ sub run {
 	($off,$name,$t,$class) = $get->Question(\$msg,$off);
 	my($answer,$attl,@generic);
 	if ($ancount && $rcode == &NOERROR) {
-	  $name =~ /^(\d+\.\d+\.\d+\.\d+)\.(.+)$/ || $name =~ /^([a-zA-Z0-9][a-zA-Z0-9\.\-]+[a-zA-Z0-9])\.($blist[0])$/;
+	  $name =~ /^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\.(.+)$/ || $name =~ /^([a-zA-Z0-9][a-zA-Z0-9\.\-]+[a-zA-Z0-9])\.($blist[0])$/;
 	  my $z = lc $2;
 #print Tmp "RESPONSE U $urbldom, R $rip, One $1, N $name, Z $z\n";
 	  $z = ($z eq lc $blist[0]) || ($z eq 'in-addr.arpa' && $blist[0] eq 'genericPTR')
